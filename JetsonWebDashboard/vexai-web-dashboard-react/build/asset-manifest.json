@@ -1,8 +1,8 @@
 {
   "files": {
     "main.css": "/static/css/main.5b90b16b.css",
-    "main.js": "/static/js/main.21a4e364.js",
-    "static/media/FieldTopDown-Cleared.png": "/static/media/FieldTopDown-Cleared.55b89c75b0f2d6452b54.png",
+    "main.js": "/static/js/main.1f12e77c.js",
+    "static/media/FieldTopDown-Cleared.png": "/static/media/FieldTopDown-Cleared.79ec43447b457e2d2618.png",
     "static/media/BlueRing-Top.png": "/static/media/BlueRing-Top.5353fbe5ecd81a82e632.png",
     "static/media/RedRing-Top.png": "/static/media/RedRing-Top.40282a453d2f765a6e89.png",
     "static/media/HeroBot-Top.png": "/static/media/HeroBot-Top.fe6fb4cb8c0e5010cef8.png",
@@ -13,10 +13,10 @@
     "static/media/vex_ai_logo_white.png": "/static/media/vex_ai_logo_white.d1b145737383a90f6020.png",
     "index.html": "/index.html",
     "main.5b90b16b.css.map": "/static/css/main.5b90b16b.css.map",
-    "main.21a4e364.js.map": "/static/js/main.21a4e364.js.map"
+    "main.1f12e77c.js.map": "/static/js/main.1f12e77c.js.map"
   },
   "entrypoints": [
     "static/css/main.5b90b16b.css",
-    "static/js/main.21a4e364.js"
+    "static/js/main.1f12e77c.js"
   ]
 }

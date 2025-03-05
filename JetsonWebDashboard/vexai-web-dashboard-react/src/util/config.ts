@@ -5,7 +5,7 @@ import { images } from "./images";
  * General configuration for the application
  */
 export const config = {
-  socketIP: "10.42.0.1",
+  socketIP: "127.0.0.1",
   socketPort: "3030",
 
   /**

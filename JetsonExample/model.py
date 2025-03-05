@@ -10,7 +10,7 @@ import common
 np.set_printoptions(threshold=sys.maxsize)
 
 # Define a constant for explicit batch processing
-EXPLICIT_BATCH = 1 << (int)(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
+EXPLICIT_BATCH = 0  # Explicit is default now
 # Create a logger instance for TensorRT
 TRT_LOGGER = trt.Logger()
 
@@ -23,7 +23,7 @@ class Model:
             print("Building engine file from onnx, this could take a while")
             # Builds and returns a TensorRT engine from an ONNX file.
             with trt.Builder(TRT_LOGGER) as builder, \
-                    builder.create_network(common.EXPLICIT_BATCH) as network, \
+                    builder.create_network(EXPLICIT_BATCH) as network, \
                     builder.create_builder_config() as config, \
                     trt.OnnxParser(network, TRT_LOGGER) as parser, \
                     trt.Runtime(TRT_LOGGER) as runtime:
@@ -95,7 +95,7 @@ class Model:
 
         # Set the input and perform inference
         self.inputs[0].host = image
-        trt_outputs = common.do_inference_v2(self.context, bindings=self.bindings, inputs=self.inputs,
+        trt_outputs = common.do_inference(self.context, self.engine, bindings=self.bindings, inputs=self.inputs,
                                              outputs=self.outputs, stream=self.stream)
 
         # Reshape the outputs for post-processing
