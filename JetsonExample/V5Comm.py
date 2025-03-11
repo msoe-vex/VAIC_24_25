@@ -119,21 +119,57 @@ class AIRecord:
         return crc
     
 
+class Observation:  # TODO: This is just a dummy object right now
+    def __init__(self):
+        pass
+
+    def __str__(self):
+        return 'DUMMY PACKET'
+    
+    def update(self, new_data):
+        pass
+
+
 class V5SerialPacket:
-    def __init__(self, type: int, detections: AIRecord):
+    def __init__(self, header: str, content: str):
         # Initialize properties of V5SerialPacket class, including type and detections
-        self.__length = len(detections.to_Serial())
-        self.__type = type        # 2 bytes
-        self.__detections = detections
+        self.__header = header
+        self.__content = content
 
     def to_Serial(self):
         # Convert V5SerialPacket properties to serialized binary format
-        data = bytearray([0xAA, 0x55, 0xCC, 0x33])
-        data += struct.pack('<HHI', self.__length, self.__type, self.__detections.getCRC32())
-        data += self.__detections.to_Serial()
+        data = bytearray()
+        data += b'#'
+        data += self.__header.encode()
+        data += b'|'
+        data += self.__content.encode()
+        data += b'\n'
         return data
+    
+    def from_Serial(data: str):
+        if data[0] != '#':
+            raise Exception('Invalid V5 Serial Packet')
+        
+        stripped_data = data.rstrip()
+        if '|' in stripped_data:
+            pipe_idx = stripped_data.index('|')
+            header = stripped_data[:pipe_idx]
+            content = stripped_data[pipe_idx+1:]
+        else:
+            header = stripped_data
+            content = ''
+        
+        self = V5SerialPacket(header, content)
+        return self
 
-class V5SerialComms:
+    def get_header(self):
+        return self.__header
+    
+    def get_content(self):
+        return self.__content
+
+
+class V5SerialComms:  # TODO This is unfinished
 
     __MAP_PACKET_TYPE = 0x0001
 
@@ -142,8 +178,8 @@ class V5SerialComms:
         self.__dev = port
         self.__started = False
         self.__ser = None
-        self.__detections = AIRecord(Position(0, 0, 0, 0, 0, 0, 0, 0), [])
-        self.__detectionLock = Lock()
+        self.__observation = Observation()
+        self.__lock = Lock()
 
     def start(self):
         # Start serial communication thread
@@ -204,11 +240,11 @@ class V5SerialComms:
 
         print("V5SerialComms thread stopped.")
 
-    def setDetectionData(self, data: AIRecord):
+    def receiveObservation(self, data: str):
         # Aquire lock and set detection data
-        self.__detectionLock.acquire()
-        self.__detections = data
-        self.__detectionLock.release()
+        self.__lock.acquire()
+        self.__observation.update(data)
+        self.__lock.release()
 
     def stop(self):
         # Stop the thread by setting started flag to False and join the thread
