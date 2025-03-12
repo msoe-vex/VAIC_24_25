@@ -7,6 +7,7 @@ from json import JSONEncoder
 import serial
 import time
 from V5Position import Position
+from typing import Callable
     
 class ImageDetection:
     def __init__(self, x: int, y: int, width: int, height: int):
@@ -126,8 +127,12 @@ class Observation:  # TODO: This is just a dummy object right now
     def __str__(self):
         return 'DUMMY PACKET'
     
-    def update(self, new_data):
+    def update(self, new_data: str):
         pass
+
+    def from_String(data: str):
+        self = Observation()
+        return self
 
 
 class V5SerialPacket:
@@ -147,10 +152,10 @@ class V5SerialPacket:
         return data
     
     def from_Serial(data: str):
-        if data[0] != '#':
-            raise Exception('Invalid V5 Serial Packet')
+        if len(data) < 1 or data[0] != '#':
+            return None
         
-        stripped_data = data.rstrip()
+        stripped_data = data.rstrip()[1:]
         if '|' in stripped_data:
             pipe_idx = stripped_data.index('|')
             header = stripped_data[:pipe_idx]
@@ -173,13 +178,16 @@ class V5SerialComms:  # TODO This is unfinished
 
     __MAP_PACKET_TYPE = 0x0001
 
-    def __init__(self, port = None):
+    def __init__(self, port = None, debug = False):
         # Initialize properties of V5SerialComms class, including port, started status, and lock
         self.__dev = port
         self.__started = False
         self.__ser = None
         self.__observation = Observation()
         self.__lock = Lock()
+        self.__next_action = None
+        self.__action_sent = True
+        self.__debug = debug
 
     def start(self):
         # Start serial communication thread
@@ -221,14 +229,27 @@ class V5SerialComms:  # TODO This is unfinished
                     # Read data from the serial port
                     data = self.__ser.readline().decode("utf-8").rstrip()
                     # print(data)
-                    if(data == "AA55CC3301"):
-                        #send data
-                        self.__detectionLock.acquire()
-                        myPacket = V5SerialPacket(self.__MAP_PACKET_TYPE, self.__detections)
-                        self.__detectionLock.release()
-                        data = myPacket.to_Serial()
-                        self.__ser.write(data)  # Write serialized data to the serial port
-
+                    packet = V5SerialPacket.from_Serial(data)
+                    if packet is None:
+                        continue
+                    if self.__debug:
+                        print(f'Packet received, header: "{packet.get_header()}", data: "{packet.get_content()}"')
+                    if packet.get_header() == "observation":
+                        #get robot observation
+                        self.__lock.acquire()
+                        self.__observation.update(packet.get_content())
+                        self.__lock.release()
+                    elif packet.get_header() == "ready":
+                        #send action to robot
+                        self.__lock.acquire()
+                        self.__observation.update(packet.get_content())
+                        if self.__next_action is not None and not self.__action_sent:
+                            to_write = V5SerialPacket('action', str(self.__next_action))
+                            self.__ser.write(to_write.to_Serial())
+                            if self.__debug:
+                                print(f'Packet sent, header: "{to_write.get_header()}", contents: "{to_write.get_content()}"')
+                            self.__action_sent = True
+                        self.__lock.release()
 
             # To close the serial port gracefully, use Ctrl+C to break the loop
             except serial.SerialException as e:
@@ -240,10 +261,17 @@ class V5SerialComms:  # TODO This is unfinished
 
         print("V5SerialComms thread stopped.")
 
-    def receiveObservation(self, data: str):
-        # Aquire lock and set detection data
+    def getObservationData(self, callback: Callable[[Observation], object]):
+        # Aquire lock and do desired query on observation object
         self.__lock.acquire()
-        self.__observation.update(data)
+        ret = callback(self.__observation)
+        self.__lock.release()
+        return ret
+    
+    def setNextAction(self, action):
+        self.__lock.acquire()
+        self.__next_action = action
+        self.__action_sent = False
         self.__lock.release()
 
     def stop(self):
