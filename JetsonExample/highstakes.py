@@ -264,7 +264,7 @@ class MainAppMSOE:
         #self.camera.start()
         #self.processing = Processing(self.camera.depth_scale)
 
-        self.v5 = V5SerialComms(port='COM2', debug=True)
+        self.v5 = V5SerialComms(debug=True)
         #self.v5Map = MapPosition()
         #self.v5Pos = V5GPS()
         #self.v5Web = V5WebData(self.v5Map, self.v5Pos, self.processing)

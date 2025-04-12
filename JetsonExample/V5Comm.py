@@ -233,6 +233,10 @@ class V5SerialComms:  # TODO This is unfinished
                     if packet is None:
                         continue
                     if self.__debug:
+                        # Send test message back to the V5 Brain
+                        if(packet.get_header() == "autoStart"):
+                            self.sendPacket("runAction", "Pick up goal")
+                            
                         print(f'Packet received, header: "{packet.get_header()}", data: "{packet.get_content()}"')
                     if packet.get_header() == "observation":
                         #get robot observation
@@ -260,6 +264,16 @@ class V5SerialComms:  # TODO This is unfinished
                 self.__ser.close()    # Close the serial port if open
 
         print("V5SerialComms thread stopped.")
+
+    def sendPacket(self, header: str, body: str):
+        # Send a packet with the specified header and body over the serial connection
+        if self.__ser and self.__ser.isOpen():
+            packet = V5SerialPacket(header, body)
+            self.__ser.write(packet.to_Serial())
+            if self.__debug:
+                print(f'Packet sent, header: "{header}", body: "{body}"')
+        else:
+            print("Serial connection is not open. Cannot send packet.")
 
     def getObservationData(self, callback: Callable[[Observation], object]):
         # Aquire lock and do desired query on observation object
