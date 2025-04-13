@@ -14,9 +14,7 @@ from V5Position import V5GPS
 from V5Web import V5WebData
 from V5Web import Statistics
 
-#TEMP TODO Change back when on Nano
-rawDetection = object
-#from model import Model, rawDetection
+from model import Model, rawDetection
 
 
 class Camera:
