@@ -197,7 +197,7 @@ class V5SerialComms:  # TODO This is unfinished
         self.__thread.start()
 
     def __run(self):
-        count = 1
+        #count = 1
         while self.__started:  # Continue running while the thread is started
             port = self.__dev
             try:
@@ -207,14 +207,14 @@ class V5SerialComms:  # TODO This is unfinished
                     devices = [dev for dev in comports() if "V5" in dev.description and "User" in dev.description]
                     # self.devices = [dev for dev in comports()]
                     # print(self.devices)
-                    if(len(devices) == 0 and count <= 5):
+                    if(len(devices) == 0):  # and count <= 5):
                         print("No V5 Brain detected.")
                         time.sleep(1)  # Wait for 1 second before retrying
-                        count += 1
+                        #count += 1
                         continue
-                    elif(count > 5):
-                        return None  # Return None if no devices found after 5 tries
-                        break
+#                    elif(count > 5):
+#                        return None  # Return None if no devices found after 5 tries
+#                        break
                     else:
                         port = devices[0].device  # Return None if no devices found after 3 tries
                     
