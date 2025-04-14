@@ -120,21 +120,6 @@ class AIRecord:
         return crc
     
 
-class Observation:  # TODO: This is just a dummy object right now
-    def __init__(self):
-        pass
-
-    def __str__(self):
-        return 'DUMMY PACKET'
-    
-    def update(self, new_data: str):
-        pass
-
-    def from_String(data: str):
-        self = Observation()
-        return self
-
-
 class V5SerialPacket:
     def __init__(self, header: str, content: str):
         # Initialize properties of V5SerialPacket class, including type and detections
@@ -183,11 +168,14 @@ class V5SerialComms:  # TODO This is unfinished
         self.__dev = port
         self.__started = False
         self.__ser = None
-        self.__observation = Observation()
         self.__lock = Lock()
         self.__next_action = None
         self.__action_sent = True
         self.__debug = debug
+        self.__rl = None
+
+    def set_rl(self, rl):
+        self.__rl = rl
 
     def start(self):
         # Start serial communication thread
@@ -233,27 +221,20 @@ class V5SerialComms:  # TODO This is unfinished
                     if packet is None:
                         continue
                     if self.__debug:
+                        print(f'Packet received, header: "{packet.get_header()}", data: "{packet.get_content()}"')
+
                         # Send test message back to the V5 Brain
                         if(packet.get_header() == "autoStart"):
                             self.sendPacket("runAction", "Pick up goal")
-                            
-                        print(f'Packet received, header: "{packet.get_header()}", data: "{packet.get_content()}"')
-                    if packet.get_header() == "observation":
-                        #get robot observation
-                        self.__lock.acquire()
-                        self.__observation.update(packet.get_content())
-                        self.__lock.release()
-                    elif packet.get_header() == "ready":
+
+                    if packet.get_header() == "ready":
                         #send action to robot
-                        self.__lock.acquire()
-                        self.__observation.update(packet.get_content())
-                        if self.__next_action is not None and not self.__action_sent:
-                            to_write = V5SerialPacket('action', str(self.__next_action))
-                            self.__ser.write(to_write.to_Serial())
-                            if self.__debug:
-                                print(f'Packet sent, header: "{to_write.get_header()}", contents: "{to_write.get_content()}"')
-                            self.__action_sent = True
-                        self.__lock.release()
+                        if self.__rl is not None:
+                            self.__lock.acquire()
+                            self.__rl.get_observation().update_from_brain(packet.get_content())
+                            action = self.__rl.predict()
+                            to_write = self.sendPacket('runAction', str(action))
+                            self.__lock.release()
 
             # To close the serial port gracefully, use Ctrl+C to break the loop
             except serial.SerialException as e:
@@ -275,13 +256,6 @@ class V5SerialComms:  # TODO This is unfinished
         else:
             print("Serial connection is not open. Cannot send packet.")
 
-    def getObservationData(self, callback: Callable[[Observation], object]):
-        # Aquire lock and do desired query on observation object
-        self.__lock.acquire()
-        ret = callback(self.__observation)
-        self.__lock.release()
-        return ret
-    
     def setNextAction(self, action):
         self.__lock.acquire()
         self.__next_action = action

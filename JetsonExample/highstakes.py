@@ -263,8 +263,9 @@ class MainAppMSOE:
         #self.camera.start()
         #self.processing = Processing(self.camera.depth_scale)
 
-        self.v5 = V5SerialComms(debug=True)
         self.rl = RLModel('strategy.zip')
+        self.v5 = V5SerialComms(debug=True)
+        self.v5.set_rl(self.rl)
         #self.v5Map = MapPosition()
         #self.v5Pos = V5GPS()
         #self.v5Web = V5WebData(self.v5Map, self.v5Pos, self.processing)
