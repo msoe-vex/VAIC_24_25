@@ -15,6 +15,7 @@ from V5Web import V5WebData
 from V5Web import Statistics
 
 from model import Model, rawDetection
+from rl_model import RLModel
 
 
 class Camera:
@@ -263,6 +264,7 @@ class MainAppMSOE:
         #self.processing = Processing(self.camera.depth_scale)
 
         self.v5 = V5SerialComms(debug=True)
+        self.rl = RLModel('strategy.zip')
         #self.v5Map = MapPosition()
         #self.v5Pos = V5GPS()
         #self.v5Web = V5WebData(self.v5Map, self.v5Pos, self.processing)
