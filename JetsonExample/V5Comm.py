@@ -215,7 +215,10 @@ class V5SerialComms:  # TODO This is unfinished
 
                 while self.__started:  # Continue reading while thread is started
                     # Read data from the serial port
-                    data = self.__ser.readline().decode("utf-8").rstrip()
+                    try:
+                        data = self.__ser.readline().decode("utf-8").rstrip()
+                    except UnicodeDecodeError:
+                        continue  # Invalid characters in current data
                     # print(data)
                     packet = V5SerialPacket.from_Serial(data)
                     if packet is None:
