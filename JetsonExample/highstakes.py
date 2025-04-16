@@ -209,7 +209,9 @@ class MainApp:
         self.camera.start()
         self.processing = Processing(self.camera.depth_scale)
 
-        self.v5 = V5SerialComms()
+        self.rl = RLModel('strategy.zip')
+        self.v5 = V5SerialComms(debug=True)
+        self.v5.set_rl(self.rl)
         self.v5Map = MapPosition()
         self.v5Pos = V5GPS()
         self.v5Web = V5WebData(self.v5Map, self.v5Pos, self.processing)
@@ -255,71 +257,6 @@ class MainApp:
             self.camera.stop()
 
 
-class MainAppMSOE:
-    def __init__(self):
-        # Initialize various components including camera, processing, and rendering
-        print("Starting Initialization...")
-        #self.camera = Camera()
-        #self.camera.start()
-        #self.processing = Processing(self.camera.depth_scale)
-
-        self.rl = RLModel('strategy.zip')
-        self.v5 = V5SerialComms(debug=True)
-        self.v5.set_rl(self.rl)
-        #self.v5Map = MapPosition()
-        #self.v5Pos = V5GPS()
-        #self.v5Web = V5WebData(self.v5Map, self.v5Pos, self.processing)
-        #self.stats = Statistics(0, 0, 0, 640, 480, 0, False)
-        #self.rendering = Rendering(self.v5Web)
-
-        self.camera = None
-        self.processing = None
-        self.v5Map = None
-        self.v5Pos = None
-        self.v5Web = None
-        self.stats = None
-        self.rendering = None
-
-        time.sleep(1)
-        print("Initialized")
-
-    def get_v5Pos(self):
-        # Return V5Position object if GPS is connected but default values if not connected
-        if self.v5Pos is None:
-            return Position(0, 0, 0, 0, 0, 0, 0, 0)
-        return self.v5Pos.getPosition()
-
-    def set_v5(self, aiRecord):
-        # Set detection data to the Brain if it is connected but does not set any data if None
-        if self.v5 is not None:
-            self.v5.setDetectionData(aiRecord)
-
-    def run(self):
-        # Start main loop: capture frames, process, detect objects, compute detections, render and display
-        self.v5.start()
-        #self.v5Pos.start()
-        #self.v5Web.start()
-        run_time = time.time()
-        print("\nStarting Loop")
-        try:
-            while True:
-                start_time = time.time()  # start time of the loop
-                #frames = self.camera.get_frames()
-                #depth_image, color_image, depth_map = self.processing.process_frames(frames)
-                #invoke_time = time.time()
-                #output, detections = self.processing.detect_objects(color_image)
-                #invoke_time = time.time() - invoke_time
-                #aiRecord = self.processing.compute_detections(self, detections, depth_image)
-                #self.set_v5(aiRecord)
-                #self.rendering.set_images(output, depth_map)
-                #self.rendering.set_detection_data(aiRecord)
-                #self.rendering.set_stats(self.stats, self.v5Pos, start_time, invoke_time, run_time)
-                # self.rendering.display_output(output)
-        finally:
-            pass
-            #self.camera.stop()
-
-
 if __name__ == "__main__":
-    app = MainAppMSOE()  # Create the main application
+    app = MainApp()  # Create the main application
     app.run()  # Run the application

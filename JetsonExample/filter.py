@@ -18,7 +18,8 @@ class LiveFilter:
         filtered_y = np.mean(self.y_buffer)
 
         # Write the filtered data to an output file
-        with open(self.output_file, 'a') as f:
-            f.write(f"{filtered_x}, {filtered_y}\n")
+        # EDIT: Commented out, fills a VERY big file
+        # with open(self.output_file, 'a') as f:
+        #     f.write(f"{filtered_x}, {filtered_y}\n")
 
         return filtered_x, filtered_y

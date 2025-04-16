@@ -169,8 +169,6 @@ class V5SerialComms:  # TODO This is unfinished
         self.__started = False
         self.__ser = None
         self.__lock = Lock()
-        self.__next_action = None
-        self.__action_sent = True
         self.__debug = debug
         self.__rl = None
 
@@ -259,11 +257,9 @@ class V5SerialComms:  # TODO This is unfinished
         else:
             print("Serial connection is not open. Cannot send packet.")
 
-    def setNextAction(self, action):
-        self.__lock.acquire()
-        self.__next_action = action
-        self.__action_sent = False
-        self.__lock.release()
+    def setDetectionData(self, aiRecord):
+        # TODO: Implement
+        pass
 
     def stop(self):
         # Stop the thread by setting started flag to False and join the thread
