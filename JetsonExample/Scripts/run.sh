@@ -7,8 +7,7 @@ SCRIPT_DIR="$(dirname "$0")"
 cd "$SCRIPT_DIR/../../JetsonWebDashboard/vexai-web-dashboard-react"
 
 # Serve the build directory in the background
-# EDIT Don't run the dashboard
-# serve -s build &
+serve -s build &
 
 # Get the directory of the Python program (one level above the script)
 PYTHON_DIR="$(realpath "$SCRIPT_DIR/..")"
