@@ -64,7 +64,7 @@ class Observation:
         except ValueError:
             print('WARNING: Invalid observation packet from brain')
 
-    def update_from_camera(self, new_data: object):
+    def update_from_camera(self, obj_list: list):
         # This gets called when the camera updates its detections
         self.__lock.acquire()
         # TODO

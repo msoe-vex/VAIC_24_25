@@ -233,7 +233,9 @@ class V5SerialComms:  # TODO This is unfinished
                         if self.__rl is not None:
                             self.__lock.acquire()
                             self.__rl.get_observation().update_from_brain(packet.get_content())
+                            # TODO: Path planning / lower-level actions
                             action = self.__rl.predict()
+                            self.__rl.get_observation().update_from_action(action)
                             to_write = self.sendPacket('runAction', str(action))
                             self.__lock.release()
 
@@ -258,8 +260,29 @@ class V5SerialComms:  # TODO This is unfinished
             print("Serial connection is not open. Cannot send packet.")
 
     def setDetectionData(self, aiRecord):
-        # TODO: Implement
-        pass
+        if self.__rl is not None:
+            object_types = ['goal', 'red_ring', 'blue_ring', 'both_rings']
+
+            objects = []
+            for d in aiRecord.detections:
+                d_x = d.mapLocattion.x[0]
+                d_y = d.mapLocattion.y[0]
+                d_z = d.mapLocattion.z[0]
+                d_type = d.classID
+
+                if d_type < 0 or d_type >= len(object_types):
+                    d_type_str = 'unknown'
+                else:
+                    d_type_str = object_types[d_type]
+
+                objects.append({
+                    'type': d_type_str,
+                    'x': d_x,
+                    'y': d_y,
+                    'z': d_z,
+                })
+
+            self.__rl.get_observation().update_from_camera(objects)
 
     def stop(self):
         # Stop the thread by setting started flag to False and join the thread
