@@ -226,16 +226,22 @@ class V5SerialComms:  # TODO This is unfinished
                     if self.__debug:
                         print(f'Packet received, header: "{packet.get_header()}", data: "{packet.get_content()}"')
 
-                        # Send test message back to the V5 Brain
-                        if(packet.get_header() == "autoStart"):
-                            self.sendPacket("runAction", "Pick up goal")
+                    if packet.get_header() == "autoStart":
+                        self.__lock.acquire()
 
-                    if packet.get_header() == "ready":
+                        self.__pending_actions = []
+                        if self.__rl is not None:
+                            self.__rl.get_observation().reset_time_remaining()
+
+                        self.__lock.release()
+
+                    elif packet.get_header() == "ready":
                         #send action to robot
                         if self.__rl is not None:
                             self.__lock.acquire()
 
                             self.__rl.get_observation().update_from_brain(packet.get_content())
+                            self.__rl.get_observation().update_time_remaining()
 
                             while len(self.__pending_actions) == 0:
                                 action_num, action_list = self.__rl.predict()
@@ -261,6 +267,10 @@ class V5SerialComms:  # TODO This is unfinished
         out = action_tuple[0]
         if action_tuple[1] is not None:
             for param in action_tuple[1]:
+                if action_tuple[0] == 'FORWARD' or action_tuple[0] == 'BACKWARD':
+                    param = param * 144 / 12 - 72
+                elif action_tuple[0] == 'TURN_TO':
+                    param = ((np.pi / 2 - param) * (180 / np.pi)) % 360
                 out += ','
                 if isinstance(param, (float, np.floating)):
                     out += f'{param:.2f}'

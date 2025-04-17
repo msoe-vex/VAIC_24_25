@@ -4,6 +4,7 @@ import copy
 from threading import Lock
 import sys
 import math
+import time
 
 # Import scripts from submodule
 sys.path.append('VEX-AI-Reinforcement-Learning')
@@ -42,24 +43,30 @@ class Observation:
             'visible_rings_count': 0,
             'visible_goals_count': 0,
         }
+        self.__last_reset = time.time()
+        self.__begin_time = 60
         self.__lock = Lock()
+
+    def reset_time_remaining(self, begin_time=60):
+        self.__lock.acquire()
+        self.__last_reset = time.time()
+        self.__begin_time = begin_time
+        self.__lock.release()
 
     def update_from_brain(self, new_data: str):
         # Define the format for observation packets from the brain here
         fields = new_data.split(',')
         try:
             # Parse everything before writing state to avoid partial writes
-            robot_x = float(fields[0])
-            robot_y = float(fields[1])
-            robot_orientation = float(fields[2])
-            time_remaining = float(fields[3])
+            robot_x = (float(fields[0]) + 72) * 12 / 144
+            robot_y = (float(fields[1]) + 72) * 12 / 144
+            robot_orientation = (((90 - float(fields[2])) * (np.pi / 180) + np.pi) % (2 * np.pi)) - np.pi
 
             self.__lock.acquire()
 
             self.__state['robot_x'][0] = robot_x
             self.__state['robot_y'][0] = robot_y
             self.__state['robot_orientation'][0] = robot_orientation
-            self.__state['time_remaining'][0] = time_remaining
 
             self.__lock.release()
         except ValueError:
@@ -110,6 +117,11 @@ class Observation:
         # TODO
         self.__lock.release()
 
+    def update_time_remaining(self):
+        self.__lock.acquire()
+        self.__state['time_remaining'][0] = max(self.__begin_time - (time.time() - self.__last_reset), 0)
+        self.__lock.release()
+
     def get_model_obs(self):
         self.__lock.acquire()
         ret = copy.deepcopy(self.__state)
@@ -132,7 +144,12 @@ class RLModel():
 
         # Do the action in the virtual environment
         success = False
+        counter = 0
         while not success:
+            if counter >= 5:
+                return -1, []
+            counter += 1
+
             self.env.set_state(obs)
             # model.predict returns tuple of (array(action_num), None)
             action = int(self.model.predict(obs)[0])
