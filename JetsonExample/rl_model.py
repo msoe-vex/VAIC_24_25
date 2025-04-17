@@ -121,24 +121,26 @@ class RLModel():
     def __init__(self, model_path):
         self.model = PPO.load(model_path)
         self.observation = Observation()
-        self.path_planner = path_planner.PathPlanner(
-            robot_length=ROBOT_LENGTH/INCHES_PER_FIELD,
-            robot_width=ROBOT_WIDTH/INCHES_PER_FIELD,
-            buffer_radius=BUFFER_RADIUS/INCHES_PER_FIELD,
-            max_velocity=80/INCHES_PER_FIELD,
-            max_accel=100/INCHES_PER_FIELD)
-        self.permanent_obstacles = [
-            path_planner.Obstacle(3/6, 2/6, 3.5/INCHES_PER_FIELD, False), # Bottom
-            path_planner.Obstacle(3/6, 4/6, 3.5/INCHES_PER_FIELD, False), # Top
-            path_planner.Obstacle(2/6, 3/6, 3.5/INCHES_PER_FIELD, False), # Left
-            path_planner.Obstacle(4/6, 3/6, 3.5/INCHES_PER_FIELD, False)] # Right
+        self.env = rl_environment.VEXHighStakesEnv('')
 
     def get_observation(self):
         return self.observation
 
     def predict(self):
-        # model.predict returns tuple of (array(action_num), None)
-        return int(self.model.predict(self.observation.get_model_obs())[0])
+        # Get physical environment state
+        obs = self.observation.get_model_obs()
 
-    def get_path(self, action):
-        pass  # TODO
+        # Do the action in the virtual environment
+        success = False
+        while not success:
+            self.env.set_state(obs)
+            # model.predict returns tuple of (array(action_num), None)
+            action = int(self.model.predict(obs)[0])
+            self.env.step(action)
+            success = self.env.last_action_success
+
+        # Do path planning and convert to lower-level actions
+        action_list = self.env.break_down_action(action)
+
+        # Output: Action number, list of actions for the robot to take next
+        return action, action_list

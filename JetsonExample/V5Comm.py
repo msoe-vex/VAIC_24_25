@@ -8,6 +8,7 @@ import serial
 import time
 from V5Position import Position
 from typing import Callable
+import numpy as np
     
 class ImageDetection:
     def __init__(self, x: int, y: int, width: int, height: int):
@@ -171,6 +172,7 @@ class V5SerialComms:  # TODO This is unfinished
         self.__lock = Lock()
         self.__debug = debug
         self.__rl = None
+        self.__pending_actions = []
 
     def set_rl(self, rl):
         self.__rl = rl
@@ -232,11 +234,17 @@ class V5SerialComms:  # TODO This is unfinished
                         #send action to robot
                         if self.__rl is not None:
                             self.__lock.acquire()
+
                             self.__rl.get_observation().update_from_brain(packet.get_content())
-                            # TODO: Path planning / lower-level actions
-                            action = self.__rl.predict()
-                            self.__rl.get_observation().update_from_action(action)
-                            to_write = self.sendPacket('runAction', str(action))
+
+                            while len(self.__pending_actions) == 0:
+                                action_num, action_list = self.__rl.predict()
+                                self.__pending_actions += action_list
+
+                            to_execute = self.__pending_actions.pop(0)
+                            to_execute_str = self.serializeAction(to_execute)
+                            to_write = self.sendPacket('runAction', to_execute_str)
+
                             self.__lock.release()
 
             # To close the serial port gracefully, use Ctrl+C to break the loop
@@ -248,6 +256,17 @@ class V5SerialComms:  # TODO This is unfinished
                 self.__ser.close()    # Close the serial port if open
 
         print("V5SerialComms thread stopped.")
+
+    def serializeAction(self, action_tuple):
+        out = action_tuple[0]
+        if action_tuple[1] is not None:
+            for param in action_tuple[1]:
+                out += ','
+                if isinstance(param, (float, np.floating)):
+                    out += f'{param:.2f}'
+                else:
+                    out += str(param)
+        return out
 
     def sendPacket(self, header: str, body: str):
         # Send a packet with the specified header and body over the serial connection
