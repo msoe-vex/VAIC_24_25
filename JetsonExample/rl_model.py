@@ -3,6 +3,7 @@ from stable_baselines3 import PPO
 import copy
 from threading import Lock
 import sys
+import math
 
 # Import scripts from submodule
 sys.path.append('VEX-AI-Reinforcement-Learning')
@@ -67,7 +68,40 @@ class Observation:
     def update_from_camera(self, obj_list: list):
         # This gets called when the camera updates its detections
         self.__lock.acquire()
-        # TODO
+
+        ring_idx = 0
+        goal_idx = 0
+
+        for obj in obj_list:
+            # Realsense has meters for units and middle is zero
+            # Scale to feet and shift zero to bottom left to match model
+            feet_per_meter = 3.28084
+            x = obj['x'] * feet_per_meter + 6
+            y = obj['y'] * feet_per_meter + 6
+
+            # Place ring & goal coordinates in our observation
+            if not math.isnan(x) and not math.isnan(y):
+                if obj['type'] == 'goal' and goal_idx < NUM_GOALS:
+                    self.__state['goals'][2 * goal_idx] = x
+                    self.__state['goals'][2 * goal_idx + 1] = y
+                    goal_idx += 1
+                elif obj['type'] == 'red_ring' and ring_idx < NUM_RINGS:
+                    self.__state['rings'][2 * ring_idx] = x
+                    self.__state['rings'][2 * ring_idx + 1] = y
+                    ring_idx += 1
+
+            # TODO: Blue rings (for competition especially)
+
+        # Fill the rest of rings and goals with -1
+        if goal_idx < NUM_GOALS:
+            self.__state['goals'][2 * goal_idx:] = -1
+        if ring_idx < NUM_RINGS:
+            self.__state['rings'][2 * ring_idx:] = -1
+
+        # Set ring and goal counts
+        self.__state['visible_goals_count'] = goal_idx
+        self.__state['visible_rings_count'] = ring_idx
+
         self.__lock.release()
 
     def update_from_action(self, action: int):
