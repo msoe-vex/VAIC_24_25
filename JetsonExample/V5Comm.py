@@ -271,7 +271,7 @@ class V5SerialComms:  # TODO This is unfinished
                     param = param * 144 / 12 - 72
                 elif action_tuple[0] == 'TURN_TO':
                     param = ((np.pi / 2 - param) * (180 / np.pi)) % 360
-                out += ','
+                out += ' '
                 if isinstance(param, (float, np.floating)):
                     out += f'{param:.2f}'
                 else:

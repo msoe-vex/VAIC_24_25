@@ -55,7 +55,7 @@ class Observation:
 
     def update_from_brain(self, new_data: str):
         # Define the format for observation packets from the brain here
-        fields = new_data.split(',')
+        fields = new_data.split()
         try:
             # Parse everything before writing state to avoid partial writes
             robot_x = (float(fields[0]) + 72) * 12 / 144
