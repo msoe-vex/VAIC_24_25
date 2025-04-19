@@ -266,16 +266,39 @@ class V5SerialComms:  # TODO This is unfinished
     def serializeAction(self, action_tuple):
         out = action_tuple[0]
         if action_tuple[1] is not None:
-            for param in action_tuple[1]:
+            params = action_tuple[1]
+            param_num = 0
+            for param in params:
                 if action_tuple[0] == 'FORWARD' or action_tuple[0] == 'BACKWARD':
+
+                    # Initial angle (so the robot doesn't turn while following and crash)
+                    if param_num == 0:
+                        if len(params) >= 4:
+                            x_old, y_old, x_new, y_new = params[0:4]
+                            initial_theta = np.arctan2(y_new - y_old, x_new - x_old)
+                            # Transform angle to the system the brain uses
+                            initial_theta = ((np.pi / 2 - initial_theta) * (180 / np.pi)) % 360
+                        else:
+                            initial_theta = 0.0
+                        if action_tuple[0] == 'BACKWARD':
+                            initial_theta = (initial_theta + 180) % 360
+                        
+                        out += f' {initial_theta:.2f}'
+                        
+                    # Transform coordinate to the system the brain uses
                     param = param * 144 / 12 - 72
+
                 elif action_tuple[0] == 'TURN_TO':
+                    # Transform angle to the system the brain uses
                     param = ((np.pi / 2 - param) * (180 / np.pi)) % 360
+                
                 out += ' '
                 if isinstance(param, (float, np.floating)):
                     out += f'{param:.2f}'
                 else:
                     out += str(param)
+                
+                param_num += 1
         return out
 
     def sendPacket(self, header: str, body: str):
