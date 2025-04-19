@@ -18,7 +18,7 @@ import { setCameraOffset, setGpsOffset, setColorCorrection } from "./state/setti
  */
 const App = () => {
   const dispatch = useAppDispatch();
-  const socketIp = useAppSelector((state) => state.settings.socketIp);
+  const socketIp = useAppSelector(() => window.location.hostname);
   const socketPort = useAppSelector((state) => state.settings.socketPort);
 
   useEffect(() => {
