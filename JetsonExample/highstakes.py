@@ -128,6 +128,11 @@ class Processing:
         self.align_frames(frames)
         depth_image = np.asanyarray(self.depth_frame_aligned.get_data())
         color_image = np.asanyarray(self.color_frame_aligned.get_data())
+        # Flip the images upside down (if camera is upside down)
+        camera_upside_down = True
+        if camera_upside_down:
+            depth_image = cv2.flip(depth_image, -1)
+            color_image = cv2.flip(color_image, -1)
         # apply color correction to image
         color_image = self.process_image(color_image)
         depthImage = cv2.normalize(depth_image, None, alpha=0.01, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
