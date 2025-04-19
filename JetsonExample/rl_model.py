@@ -47,10 +47,11 @@ class Observation:
         self.__begin_time = 60
         self.__lock = Lock()
 
-    def reset_time_remaining(self, begin_time=60):
+    def begin_auton(self, begin_time=60):
         self.__lock.acquire()
         self.__last_reset = time.time()
         self.__begin_time = begin_time
+        self.__state['holding_goal'] = 0
         self.__lock.release()
 
     def update_from_brain(self, new_data: str):
@@ -68,6 +69,11 @@ class Observation:
             self.__state['robot_y'][0] = robot_y
             self.__state['robot_orientation'][0] = robot_orientation
 
+            # Update held goals
+            for i in range(0, self.__state['holding_goal']):
+                self.__state['goals'][2 * i] = self.__state['robot_x']
+                self.__state['goals'][2 * i + 1] = self.__state['robot_y']
+
             self.__lock.release()
         except ValueError:
             print('WARNING: Invalid observation packet from brain')
@@ -77,7 +83,12 @@ class Observation:
         self.__lock.acquire()
 
         ring_idx = 0
-        goal_idx = 0
+        goal_idx = self.__state['holding_goal']
+
+        # Update held goal to be same position as robot
+        for i in range(0, goal_idx):
+            self.__state['goals'][2 * i] = self.__state['robot_x']
+            self.__state['goals'][2 * i + 1] = self.__state['robot_y']
 
         for obj in obj_list:
             # Realsense has meters for units and middle is zero
@@ -111,10 +122,15 @@ class Observation:
 
         self.__lock.release()
 
-    def update_from_action(self, action: int):
+    def update_from_action(self, action: str):
         # This is here in case we need to guess some observation values
         self.__lock.acquire()
-        # TODO
+        
+        if action == 'PICKUP_GOAL':
+            self.__state['holding_goal'] = 1
+        elif action == 'DROP_GOAL':
+            self.__state['holding_goal'] = 0
+
         self.__lock.release()
 
     def update_time_remaining(self):

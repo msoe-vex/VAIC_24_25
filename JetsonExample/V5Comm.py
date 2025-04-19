@@ -231,7 +231,7 @@ class V5SerialComms:  # TODO This is unfinished
 
                         self.__pending_actions = []
                         if self.__rl is not None:
-                            self.__rl.get_observation().reset_time_remaining()
+                            self.__rl.get_observation().begin_auton()
 
                         self.__lock.release()
 
@@ -264,6 +264,8 @@ class V5SerialComms:  # TODO This is unfinished
         print("V5SerialComms thread stopped.")
 
     def serializeAction(self, action_tuple):
+        # We assume self.__lock is held by the caller
+
         out = action_tuple[0]
         if action_tuple[1] is not None:
             params = action_tuple[1]
@@ -299,6 +301,10 @@ class V5SerialComms:  # TODO This is unfinished
                     out += str(param)
                 
                 param_num += 1
+            
+        if self.__rl is not None:
+            self.__rl.get_observation().update_from_action(action_tuple[0])
+        
         return out
 
     def sendPacket(self, header: str, body: str):
