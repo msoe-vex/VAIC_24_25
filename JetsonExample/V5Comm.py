@@ -173,6 +173,7 @@ class V5SerialComms:  # TODO This is unfinished
         self.__debug = debug
         self.__rl = None
         self.__pending_actions = []
+        self.__initial_position = (0, 0, 0)
 
     def set_rl(self, rl):
         self.__rl = rl
@@ -229,9 +230,13 @@ class V5SerialComms:  # TODO This is unfinished
                     if packet.get_header() == "autoStart":
                         self.__lock.acquire()
 
+                        # Reset state
                         self.__pending_actions = []
                         if self.__rl is not None:
                             self.__rl.get_observation().begin_auton()
+                        
+                        # Set brain's initial position
+                        self.sendPacket('setPosition', ' '.join([f'{n:.2f}' for n in self.__initial_position]))
 
                         self.__lock.release()
 
@@ -244,12 +249,12 @@ class V5SerialComms:  # TODO This is unfinished
                             self.__rl.get_observation().update_time_remaining()
 
                             while len(self.__pending_actions) == 0:
-                                action_num, action_list = self.__rl.predict()
+                                _, action_list = self.__rl.predict()
                                 self.__pending_actions += action_list
 
                             to_execute = self.__pending_actions.pop(0)
                             to_execute_str = self.serializeAction(to_execute)
-                            to_write = self.sendPacket('runAction', to_execute_str)
+                            self.sendPacket('runAction', to_execute_str)
 
                             self.__lock.release()
 
@@ -341,6 +346,16 @@ class V5SerialComms:  # TODO This is unfinished
                 })
 
             self.__rl.get_observation().update_from_camera(objects)
+
+            self.__lock.acquire()
+
+            pos = aiRecord.position
+            inches_per_meter = 39.3701
+            scaled_x = pos.x * inches_per_meter
+            scaled_y = pos.y * inches_per_meter
+            self.__initial_position = (scaled_x, scaled_y, pos.rotation)
+
+            self.__lock.release()
 
     def stop(self):
         # Stop the thread by setting started flag to False and join the thread
