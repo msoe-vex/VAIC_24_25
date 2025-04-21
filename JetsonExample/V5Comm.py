@@ -9,6 +9,10 @@ import time
 from V5Position import Position
 from typing import Callable
 import numpy as np
+import os
+import cv2
+import glob
+import shutil
     
 class ImageDetection:
     def __init__(self, x: int, y: int, width: int, height: int):
@@ -164,7 +168,7 @@ class V5SerialComms:  # TODO This is unfinished
 
     __MAP_PACKET_TYPE = 0x0001
 
-    def __init__(self, port = None, debug = False):
+    def __init__(self, port = None, debug = False, log_folder='auton_logs'):
         # Initialize properties of V5SerialComms class, including port, started status, and lock
         self.__dev = port
         self.__started = False
@@ -177,6 +181,20 @@ class V5SerialComms:  # TODO This is unfinished
         self.__auton_running = False
         self.__last_heartbeat = 0
         self.__heartbeat_timeout = 5
+        self.__log_folder = log_folder
+        self.__auton_begin = 0
+        self.__battery = 0
+        self.__last_battery_time = 0
+        self.__last_battery_img = None
+        self.__last_battery_img_time = None
+        self.__connected_devices = 0
+        self.__last_conn_devs_time = 0
+        self.__last_conn_devs_img = None
+        self.__last_conn_devs_img_time = None
+        self.__last_camera_img = None
+        self.__last_camera_time = 0
+        self.__camera_update_interval = 1
+        self.__save_n_auton_logs = 10
 
     def set_rl(self, rl):
         self.__rl = rl
@@ -234,8 +252,16 @@ class V5SerialComms:  # TODO This is unfinished
                     packet = V5SerialPacket.from_Serial(data)
                     if packet is None:
                         continue
+
+                    log_line = f'[{time.time():.3f}] Packet received, header: "{packet.get_header()}", data: "{packet.get_content()}"'
                     if self.__debug:
-                        print(f'Packet received, header: "{packet.get_header()}", data: "{packet.get_content()}"')
+                        print(log_line)
+                    
+                    if self.__auton_running:
+                        self.__lock.acquire()
+                        self.addLogLine(log_line)
+                        self.saveCameraImage(self.__last_camera_img, self.__last_camera_time)
+                        self.__lock.release()
 
                     if packet.get_header() == "autoStart":
                         self.__lock.acquire()
@@ -246,6 +272,17 @@ class V5SerialComms:  # TODO This is unfinished
                             self.__rl.get_observation().begin_auton()
                         self.__auton_running = True
                         self.__last_heartbeat = time.time()
+                        self.__auton_begin = time.time()
+
+                        battery_log_line = f'[{self.__last_battery_time:.3f}] Packet received, header: "battery", data: "{self.__battery}"'
+                        conn_devs_log_line = f'[{self.__last_conn_devs_time:.3f}] Packet received, header: "connectedDevices", data: "{self.__connected_devices}"'
+                        self.addLogLine(battery_log_line)
+                        self.saveCameraImage(self.__last_battery_img, self.__last_battery_img_time)
+                        self.addLogLine(conn_devs_log_line)
+                        self.saveCameraImage(self.__last_conn_devs_img, self.__last_conn_devs_img_time)
+
+                        self.addLogLine(log_line)
+                        self.saveCameraImage(self.__last_camera_img, self.__last_camera_time)
                         
                         # Set brain's initial position
                         self.sendPacket('setPosition', ' '.join([f'{n:.2f}' for n in self.__initial_position]))
@@ -255,6 +292,24 @@ class V5SerialComms:  # TODO This is unfinished
                     elif packet.get_header() == "heartBeat":
                         self.__lock.acquire()
                         self.__last_heartbeat = time.time()
+                        self.__lock.release()
+                    
+                    elif packet.get_header() == "battery":
+                        self.__lock.acquire()
+                        self.__battery = int(packet.get_content())
+                        self.__last_battery_time = time.time()
+                        if not self.__auton_running:
+                            self.__last_battery_img = self.__last_camera_img
+                            self.__last_battery_img_time = self.__last_camera_time
+                        self.__lock.release()
+                    
+                    elif packet.get_header() == "connectedDevices":
+                        self.__lock.acquire()
+                        self.__connected_devices = int(packet.get_content())
+                        self.__last_conn_devs_time = time.time()
+                        if not self.__auton_running:
+                            self.__last_conn_devs_img = self.__last_camera_img
+                            self.__last_conn_devs_img_time = self.__last_camera_time
                         self.__lock.release()
 
                     elif packet.get_header() == "ready":
@@ -286,7 +341,53 @@ class V5SerialComms:  # TODO This is unfinished
         print("V5SerialComms thread stopped.")
 
     def endAuton(self):
-        pass
+        # We assume self.__lock is held by the caller
+
+        # Delete all but the last n autons
+        matching_autons = sorted(glob.glob(os.path.join(self.__log_folder, 'auton_*')))
+        for to_delete in matching_autons[:-self.__save_n_auton_logs]:
+            shutil.rmtree(to_delete)
+
+    def getLogFolder(self):
+        # We assume self.__lock is held by the caller
+
+        # Get the location to store auton stats
+        subfolder_name = f'auton_{self.__auton_begin:.3f}'
+        folder_name = os.path.join(self.__log_folder, subfolder_name)
+
+        # Create that folder
+        if not os.path.exists(folder_name):
+            os.makedirs(folder_name)
+
+    def addLogLine(self, line):
+        # We assume self.__lock is held by the caller
+
+        folder_name = self.getLogFolder()
+        auton_file = os.path.join(folder_name, 'auton.log')
+
+        with open(auton_file, 'a') as f:
+            f.write(line + '\n')
+    
+    def saveCameraImage(self, image, taken_time):
+        # We assume self.__lock is held by the caller
+
+        if taken_time != 0 and image is not None:
+            file_name = f'realsense_{taken_time:.3f}.jpg'
+            folder_name = self.getLogFolder()
+            file_path = os.path.join(folder_name, file_name)
+
+            if not os.path.exists(file_path):
+                cv2.imwrite(file_path, image, [int(cv2.IMWRITE_JPEG_QUALITY), 30])
+    
+    def updateCameraImage(self, image):
+        # We assume self.__lock is held by the caller
+        
+        this_camera_time = time.time()
+
+        if image is not None and this_camera_time - self.__last_camera_time > self.__camera_update_interval:
+            resized_img = cv2.resize(image, (320, 240), interpolation=cv2.INTER_AREA)
+            self.__last_camera_img = resized_img
+            self.__last_camera_time = this_camera_time
 
     def serializeAction(self, action_tuple):
         # We assume self.__lock is held by the caller
@@ -333,16 +434,22 @@ class V5SerialComms:  # TODO This is unfinished
         return out
 
     def sendPacket(self, header: str, body: str):
+        # We assume self.__lock is held by the caller
+
         # Send a packet with the specified header and body over the serial connection
         if self.__ser and self.__ser.isOpen():
             packet = V5SerialPacket(header, body)
             self.__ser.write(packet.to_Serial())
+            log_line = f'[{time.time():.3f}] Packet sent, header: "{header}", body: "{body}"'
             if self.__debug:
-                print(f'Packet sent, header: "{header}", body: "{body}"')
+                print(log_line)
+            if self.__auton_running:
+                self.addLogLine(log_line)
+                self.saveCameraImage(self.__last_camera_img, self.__last_camera_time)
         else:
             print("Serial connection is not open. Cannot send packet.")
 
-    def setDetectionData(self, aiRecord):
+    def setDetectionData(self, aiRecord, color_image=None):
         if self.__rl is not None:
             object_types = ['goal', 'red_ring', 'blue_ring', 'both_rings']
 
@@ -374,6 +481,20 @@ class V5SerialComms:  # TODO This is unfinished
             scaled_x = pos.x * inches_per_meter
             scaled_y = pos.y * inches_per_meter
             self.__initial_position = (scaled_x, scaled_y, pos.rotation)
+
+            self.updateCameraImage(color_image)
+
+            log_line = f'[{time.time():.3f}] Object detections: "'
+            for obj in objects:
+                if log_line[-1] != '"':
+                    log_line += ';'
+                log_line += f"{obj['type']},{obj['x'] * inches_per_meter:.2f},{obj['y'] * inches_per_meter:.2f}"
+            log_line += '"'
+
+            if self.__debug:
+                print(log_line)
+            if self.__auton_running:
+                self.addLogLine(log_line)
 
             self.__lock.release()
 

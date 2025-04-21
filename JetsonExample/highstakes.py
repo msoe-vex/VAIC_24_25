@@ -232,10 +232,10 @@ class MainApp:
             return Position(0, 0, 0, 0, 0, 0, 0, 0)
         return self.v5Pos.getPosition()
 
-    def set_v5(self, aiRecord):
+    def set_v5(self, aiRecord, color_image=None):
         # Set detection data to the Brain if it is connected but does not set any data if None
         if self.v5 is not None:
-            self.v5.setDetectionData(aiRecord)
+            self.v5.setDetectionData(aiRecord, color_image)
 
     def run(self):
         # Start main loop: capture frames, process, detect objects, compute detections, render and display
@@ -253,7 +253,7 @@ class MainApp:
                 output, detections = self.processing.detect_objects(color_image)
                 invoke_time = time.time() - invoke_time
                 aiRecord = self.processing.compute_detections(self, detections, depth_image)
-                self.set_v5(aiRecord)
+                self.set_v5(aiRecord, color_image)
                 self.rendering.set_images(output, depth_map)
                 self.rendering.set_detection_data(aiRecord)
                 self.rendering.set_stats(self.stats, self.v5Pos, start_time, invoke_time, run_time)
