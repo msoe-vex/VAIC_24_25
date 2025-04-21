@@ -5,6 +5,7 @@
 
 *_offsets.json
 color_correction.json
+auton_logs/
 
 # User-specific files
 *.rsuser

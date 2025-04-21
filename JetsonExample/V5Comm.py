@@ -195,6 +195,8 @@ class V5SerialComms:  # TODO This is unfinished
         self.__last_camera_time = 0
         self.__camera_update_interval = 1
         self.__save_n_auton_logs = 10
+        self.__detection_log_interval = 0.5
+        self.__last_detection_log = 0
 
     def set_rl(self, rl):
         self.__rl = rl
@@ -359,6 +361,8 @@ class V5SerialComms:  # TODO This is unfinished
         if not os.path.exists(folder_name):
             os.makedirs(folder_name)
 
+        return folder_name
+
     def addLogLine(self, line):
         # We assume self.__lock is held by the caller
 
@@ -386,7 +390,8 @@ class V5SerialComms:  # TODO This is unfinished
 
         if image is not None and this_camera_time - self.__last_camera_time > self.__camera_update_interval:
             resized_img = cv2.resize(image, (320, 240), interpolation=cv2.INTER_AREA)
-            self.__last_camera_img = resized_img
+            resized_rgb = cv2.cvtColor(resized_img, cv2.COLOR_BGR2RGB)
+            self.__last_camera_img = resized_rgb
             self.__last_camera_time = this_camera_time
 
     def serializeAction(self, action_tuple):
@@ -484,17 +489,23 @@ class V5SerialComms:  # TODO This is unfinished
 
             self.updateCameraImage(color_image)
 
-            log_line = f'[{time.time():.3f}] Object detections: "'
-            for obj in objects:
-                if log_line[-1] != '"':
-                    log_line += ';'
-                log_line += f"{obj['type']},{obj['x'] * inches_per_meter:.2f},{obj['y'] * inches_per_meter:.2f}"
-            log_line += '"'
+            this_detection = time.time()
+            if this_detection - self.__last_detection_log > self.__detection_log_interval:
+                self.__last_detection_log = this_detection
 
-            if self.__debug:
-                print(log_line)
-            if self.__auton_running:
-                self.addLogLine(log_line)
+                log_line = f'[{this_detection:.3f}] Object detections: "'
+                for obj in objects:
+                    if np.isnan(obj['x']) or np.isnan(obj['y']):
+                        continue
+                    if log_line[-1] != '"':
+                        log_line += ';'
+                    log_line += f"{obj['type']},{obj['x'] * inches_per_meter:.2f},{obj['y'] * inches_per_meter:.2f}"
+                log_line += '"'
+
+                if self.__debug:
+                    print(log_line)
+                if self.__auton_running:
+                    self.addLogLine(log_line)
 
             self.__lock.release()
 
