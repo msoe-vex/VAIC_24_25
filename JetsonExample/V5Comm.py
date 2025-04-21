@@ -138,7 +138,7 @@ class V5SerialPacket:
         return data
     
     def from_Serial(data: str):
-        if len(data) < 1 or data[0] != '#':
+        if data is None or len(data) < 1 or data[0] != '#':
             return None
         
         stripped_data = data.rstrip()[1:]
@@ -174,6 +174,9 @@ class V5SerialComms:  # TODO This is unfinished
         self.__rl = None
         self.__pending_actions = []
         self.__initial_position = (0, 0, 0)
+        self.__auton_running = False
+        self.__last_heartbeat = 0
+        self.__heartbeat_timeout = 5
 
     def set_rl(self, rl):
         self.__rl = rl
@@ -210,7 +213,7 @@ class V5SerialComms:  # TODO This is unfinished
                 print("Connecting to ", port)
 
                 # Establish serial connection with the port
-                self.__ser = serial.Serial(port, 115200, timeout=10)
+                self.__ser = serial.Serial(port, 115200, timeout=self.__heartbeat_timeout)
                 self.__ser.flushInput()
                 self.__ser.flushOutput()
 
@@ -221,6 +224,13 @@ class V5SerialComms:  # TODO This is unfinished
                     except UnicodeDecodeError:
                         continue  # Invalid characters in current data
                     # print(data)
+
+                    self.__lock.acquire()
+                    if self.__auton_running and time.time() - self.__last_heartbeat > self.__heartbeat_timeout:
+                        self.__auton_running = False
+                        self.endAuton()
+                    self.__lock.release()
+
                     packet = V5SerialPacket.from_Serial(data)
                     if packet is None:
                         continue
@@ -234,10 +244,17 @@ class V5SerialComms:  # TODO This is unfinished
                         self.__pending_actions = []
                         if self.__rl is not None:
                             self.__rl.get_observation().begin_auton()
+                        self.__auton_running = True
+                        self.__last_heartbeat = time.time()
                         
                         # Set brain's initial position
                         self.sendPacket('setPosition', ' '.join([f'{n:.2f}' for n in self.__initial_position]))
 
+                        self.__lock.release()
+
+                    elif packet.get_header() == "heartBeat":
+                        self.__lock.acquire()
+                        self.__last_heartbeat = time.time()
                         self.__lock.release()
 
                     elif packet.get_header() == "ready":
@@ -267,6 +284,9 @@ class V5SerialComms:  # TODO This is unfinished
                 self.__ser.close()    # Close the serial port if open
 
         print("V5SerialComms thread stopped.")
+
+    def endAuton(self):
+        pass
 
     def serializeAction(self, action_tuple):
         # We assume self.__lock is held by the caller
