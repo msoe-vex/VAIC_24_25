@@ -194,7 +194,7 @@ class V5SerialComms:  # TODO This is unfinished
         self.__last_camera_img = None
         self.__last_camera_time = 0
         self.__camera_update_interval = 1
-        self.__save_n_auton_logs = 10
+        self.__save_n_auton_logs = 100
         self.__detection_log_interval = 0.5
         self.__last_detection_log = 0
 
