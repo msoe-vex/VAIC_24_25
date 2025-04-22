@@ -122,6 +122,7 @@ class GameRenderer:
         self.last_action = ''
         self.battery = -999
         self.objects = []
+        self.gps_position = [-999, -999, -999]
     
     def update_packet(self, header, body):
         self.last_action = ''
@@ -172,6 +173,11 @@ class GameRenderer:
             out['y'] = float(fields[2])
 
             self.objects.append(out)
+    
+    def update_gps(self, gps_str):
+        fields = gps_str.split(',')
+        for i in range(min(len(fields), len(self.gps_position))):
+            self.gps_position[i] = float(fields[i])
     
     def render(self, out_folder, log_line, i, n, line_time, img_repo):
         fig, axes = plt.subplots(1, 2, figsize=(2 * 8, 8))
@@ -238,6 +244,14 @@ class GameRenderer:
             ax.add_patch(orientation_arrow)
             begin_center = center
         
+        if -999 not in self.gps_position:
+            gps_center = np.array(self.gps_position[:2])
+            gps_arrow_dx = np.cos(np.radians(90 - self.gps_position[2])) * 12
+            gps_arrow_dy = np.sin(np.radians(90 - self.gps_position[2])) * 12
+            gps_orientation_arrow = patches.FancyArrow(gps_center[0], gps_center[1], gps_arrow_dx, gps_arrow_dy,
+                    width=0.1 * 12, color='green', length_includes_head=True, alpha=0.25)
+            ax.add_patch(gps_orientation_arrow)
+        
         if 0 not in [len(self.planned_x), len(self.planned_y)]:
             ax.plot(self.planned_x, self.planned_y, 'k--', alpha=0.5)
             begin_center = np.array([self.planned_x[0], self.planned_y[0]])
@@ -293,6 +307,7 @@ def main(in_folder):
     for i, line in enumerate(lines):
         packet_match = re.match(r'^\[([0-9]+\.[0-9]+)\] Packet (?:sent|received), header: "([^"]*)", (?:data|body): "([^"]*)"$', line)
         detection_match = re.match(r'^\[([0-9]+\.[0-9]+)\] Object detections: "([^"]*)"$', line)
+        gps_match = re.match(r'^\[([0-9]+\.[0-9]+)\] GPS Coordinates: "([^"]*)"$', line)
         if packet_match is not None:
             line_time, header, body = packet_match.groups()
             line_time = float(line_time)
@@ -307,6 +322,14 @@ def main(in_folder):
             line_times.append(line_time)
 
             render.update_detections(detection_str)
+            render.render(frame_folder, line, i, len(lines), line_time, imgs)
+        
+        elif gps_match is not None:
+            line_time, gps_str = gps_match.groups()
+            line_time = float(line_time)
+            line_times.append(line_time)
+
+            render.update_gps(gps_str)
             render.render(frame_folder, line, i, len(lines), line_time, imgs)
 
     out_frame_paths = sorted(glob.glob(os.path.join(frame_folder, 'auton_*.png')))

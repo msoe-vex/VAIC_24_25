@@ -177,7 +177,9 @@ class V5SerialComms:  # TODO This is unfinished
         self.__debug = debug
         self.__rl = None
         self.__pending_actions = []
-        self.__initial_position = (0, 0, 0)
+        self.__gps_position = (0, 0, 0)
+        self.__gps_log_interval = 1
+        self.__last_gps_log = 0
         self.__auton_running = False
         self.__last_heartbeat = 0
         self.__heartbeat_timeout = 5
@@ -287,7 +289,7 @@ class V5SerialComms:  # TODO This is unfinished
                         self.saveCameraImage(self.__last_camera_img, self.__last_camera_time)
                         
                         # Set brain's initial position
-                        self.sendPacket('setPosition', ' '.join([f'{n:.2f}' for n in self.__initial_position]))
+                        self.sendPacket('setPosition', ' '.join([f'{n:.2f}' for n in self.__gps_position]))
 
                         self.__lock.release()
 
@@ -393,6 +395,21 @@ class V5SerialComms:  # TODO This is unfinished
             resized_rgb = cv2.cvtColor(resized_img, cv2.COLOR_BGR2RGB)
             self.__last_camera_img = resized_rgb
             self.__last_camera_time = this_camera_time
+    
+    def updateGPSPosition(self, gps_pos):
+        # We assume self.__lock is held by the caller
+        
+        this_gps_time = time.time()
+
+        self.__gps_position = gps_pos
+        if this_gps_time - self.__last_gps_log > self.__gps_log_interval:
+            log_line = f'[{this_gps_time:.3f}] GPS Coordinates: "{",".join([f"{n:.2f}" for n in gps_pos])}"'
+            if self.__debug:
+                print(log_line)
+            if self.__auton_running:
+                self.addLogLine(log_line)
+                self.saveCameraImage(self.__last_camera_img, self.__last_camera_time)
+            self.__last_gps_log = this_gps_time
 
     def serializeAction(self, action_tuple):
         # We assume self.__lock is held by the caller
@@ -485,8 +502,9 @@ class V5SerialComms:  # TODO This is unfinished
             inches_per_meter = 39.3701
             scaled_x = pos.x * inches_per_meter
             scaled_y = pos.y * inches_per_meter
-            self.__initial_position = (scaled_x, scaled_y, pos.rotation)
+            gps_pos = (scaled_x, scaled_y, pos.rotation)
 
+            self.updateGPSPosition(gps_pos)
             self.updateCameraImage(color_image)
 
             this_detection = time.time()
