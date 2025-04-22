@@ -258,6 +258,7 @@ class MainApp:
                 self.rendering.set_detection_data(aiRecord)
                 self.rendering.set_stats(self.stats, self.v5Pos, start_time, invoke_time, run_time)
                 # self.rendering.display_output(output)
+                time.sleep(0.1)  # Don't spin the entire CPU
         finally:
             self.camera.stop()
 
