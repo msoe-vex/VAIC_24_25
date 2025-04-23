@@ -195,7 +195,7 @@ class V5SerialComms:  # TODO This is unfinished
         self.__last_conn_devs_img_time = None
         self.__last_camera_img = None
         self.__last_camera_time = 0
-        self.__camera_update_interval = 1
+        self.__camera_update_interval = 0.5
         self.__save_n_auton_logs = 100
         self.__detection_log_interval = 0.5
         self.__last_detection_log = 0
@@ -556,6 +556,7 @@ class V5SerialComms:  # TODO This is unfinished
                     print(log_line)
                 if self.__auton_running:
                     self.addLogLine(log_line)
+                    self.saveCameraImage(self.__last_camera_img, self.__last_camera_time)
 
             self.__lock.release()
 
