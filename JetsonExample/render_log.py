@@ -8,6 +8,7 @@ import glob
 import os
 from PIL import Image
 import cv2
+from scipy.ndimage import gaussian_filter
 
 class Obstacle:
     def __init__(self, x, y, r, i):
@@ -43,6 +44,7 @@ class ImageRepo:
         self.last_img = -1
         self.last_width = -1
         self.last_height = -1
+        self.last_ranking = None
         
     def get_img_name(self, timestamp):
         ret_idx = -1
@@ -59,45 +61,89 @@ class ImageRepo:
         else:
             return self.names[ret_idx]
 
-    def _get_new_val(self, old_val, nc):
-        """
-        Get the "closest" colour to old_val in the range [0,1] per channel divided
-        into nc values.
+    @staticmethod
+    def _gen_blue_noise_ranking(dims):
+        seed_mask = np.random.randint(0, 10, size=dims[:2])
+        seed_mask = np.array(1 - np.minimum(seed_mask, 1), dtype=np.uint8)  # 90% zero, 10% one
+        
+        rank = np.zeros(dims[:2], dtype=np.uint16)
+        
+        # Lower ranks: take most clustered ones out of the seed mask until it's empty
+        n_ones = np.sum(seed_mask)
+        mask1 = np.array(seed_mask, dtype=np.uint8)
+        while n_ones > 0:
+            D = gaussian_filter(np.array(mask1, dtype=np.float32), sigma=1.5, mode='wrap')
+            i, j = np.unravel_index(np.argmax(D * mask1), mask1.shape)
+            
+            mask1[i, j] = 0
+            n_ones -= 1
+            rank[i, j] = n_ones
+        
+        # Middle ranks: add ones to the biggest voids until mask is half full
+        n_ones = np.sum(seed_mask)
+        mask2 = np.array(seed_mask, dtype=np.uint8)
+        while n_ones < np.prod(dims[:2]):
+            D = gaussian_filter(np.array(mask2, dtype=np.float32), sigma=1.5, mode='wrap')
+            i, j = np.unravel_index(np.argmin(D * (-mask2 + 1) + np.array(mask2, dtype=np.float32) * 999), mask2.shape)
+            
+            rank[i, j] = n_ones
+            mask2[i, j] = 1
+            n_ones += 1
+        
+        # Upper ranks: Invert half-full mask, kill clusters until inverted mask is empty
+        inv_mask2 = 1 - mask2
+        n_zeros = np.sum(inv_mask2)
+        while n_zeros > 0:
+            D = gaussian_filter(np.array(inv_mask2, dtype=np.float32), sigma=1.5, mode='wrap')
+            i, j = np.unravel_index(np.argmax(D * inv_mask2), inv_mask2.shape)
+            
+            rank[i, j] = n_ones
+            inv_mask2[i, j] = 0
+            mask2[i, j] = 1
+            n_ones += 1
+            n_zeros -= 1
+        
+        return rank
 
-        """
+    @staticmethod
+    def _rank_to_thresholds(rank, level_range):
+        old_range = np.prod(rank.shape[:2])
+        return np.array(rank, dtype=np.float32) * level_range / old_range
 
-        return np.round(old_val * (nc - 1)) / (nc - 1)
+    @staticmethod
+    def _tile_to_image(arr, img):
+        height, width = img.shape[:2]
+        height_its, width_its = ((np.array(img.shape[:2]) - 1) // np.array(arr.shape[:2])) + 1
+        arr = np.tile(arr, (height_its, width_its))
+        arr = arr[:height, :width].reshape((height, width, 1))
+        return arr
 
-    def _fs_dither(self, img, nc):
-        """
-        Floyd-Steinberg dither the image img into a palette with nc colours per
-        channel.
+    @staticmethod
+    def _apply_to_image(img, thresholds, level_range):
+        img = np.array(img)
+        
+        under_threshold = np.array(img[img % level_range < thresholds], dtype=np.float32)
+        under_corrected = np.floor(under_threshold / level_range) * level_range
+        img[img % level_range < thresholds] = np.array(under_corrected, dtype=np.uint8)
+        
+        over_threshold = np.array(img[img % level_range >= thresholds], dtype=np.float32)
+        over_corrected = np.ceil(over_threshold / level_range) * level_range
+        img[img % level_range >= thresholds] = np.array(over_corrected, dtype=np.uint8)
+        
+        return img
 
-        """
-
-        arr = np.array(img, dtype=float) / 255
-
-        new_height = arr.shape[0]
-        new_width = arr.shape[1]
-        for ir in range(new_height):
-            for ic in range(new_width):
-                # NB need to copy here for RGB arrays otherwise err will be (0,0,0)!
-                old_val = arr[ir, ic].copy()
-                new_val = self._get_new_val(old_val, nc)
-                arr[ir, ic] = new_val
-                err = old_val - new_val
-                # In this simple example, we will just ignore the border pixels.
-                if ic < new_width - 1:
-                    arr[ir, ic+1] += err * 7/16
-                if ir < new_height - 1:
-                    if ic > 0:
-                        arr[ir+1, ic-1] += err * 3/16
-                    arr[ir+1, ic] += err * 5/16
-                    if ic < new_width - 1:
-                        arr[ir+1, ic+1] += err / 16
-
-        carr = np.array(arr/np.max(arr, axis=(0,1)) * 255, dtype=np.uint8)
-        return Image.fromarray(carr)
+    @staticmethod
+    def _dither_to_web_safe(img, prev_ranking=None):
+        channel_step_size = 51
+        img = np.array(img)
+        if prev_ranking is not None:
+            ranking = prev_ranking
+        else:
+            ranking = ImageRepo._gen_blue_noise_ranking((64, 64))
+        thresholds = ImageRepo._rank_to_thresholds(ranking, channel_step_size)
+        thresholds = ImageRepo._tile_to_image(thresholds, img)
+        img = ImageRepo._apply_to_image(img, thresholds, channel_step_size)
+        return img, ranking
 
     def get_dithered_img(self, img_name, width, height):
         # Implement caching so we don't do costly re-dithering
@@ -108,7 +154,7 @@ class ImageRepo:
         img = self.imgs[idx]
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(img).resize((width, height))
-        img = self._fs_dither(img, 3)
+        img, self.last_ranking = self._dither_to_web_safe(img, self.last_ranking)
         
         self.last_img_name = img_name
         self.last_img = img
