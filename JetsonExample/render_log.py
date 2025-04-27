@@ -7,6 +7,7 @@ import sys
 import glob
 import os
 from PIL import Image
+import cv2
 
 class Obstacle:
     def __init__(self, x, y, r, i):
@@ -15,41 +16,48 @@ class Obstacle:
         self.radius = r
         self.ignore_collision = i
 
-class RSImageRepo:
-    def __init__(self, folder):
-        rs_imgs = sorted(glob.glob(os.path.join(folder, 'realsense_*.jpg')))
+class ImageRepo:
+    def __init__(self, folder, img_src):
+        log_path = os.path.join(folder, img_src + '.log')
+        vid_path = os.path.join(folder, img_src + '.mp4')
+
+        with open(log_path, 'r') as f:
+            file_lines = f.readlines()
+        file_lines = [l.strip() for l in file_lines]
+        file_lines = [l for l in file_lines if l != '']
+        self.times = [float(l) for l in file_lines]
+        self.names = file_lines
         
-        self.rs_times = []
-        self.rs_paths = []
+        vid_reader = cv2.VideoCapture(vid_path)
+        finished = False
+        self.imgs = []
+        while not finished:
+            ret, img = vid_reader.read()
+            if ret:
+                self.imgs.append(img)
+            else:
+                finished = True
+        vid_reader.release()
+
+        self.last_img_name = -1
+        self.last_img = -1
+        self.last_width = -1
+        self.last_height = -1
         
-        for full_path in rs_imgs:
-            rs_match = re.match(r'^.*realsense_([0-9]+\.[0-9]+).jpg$', full_path)
-            if rs_match is None:
-                continue
-            rs_time = float(rs_match.groups()[0])
-            
-            self.rs_times.append(rs_time)
-            self.rs_paths.append(full_path)
-            
-            self.last_img_path = None
-            self.last_img = None
-            self.last_width = None
-            self.last_height = None
-        
-    def get_img_path(self, timestamp):
+    def get_img_name(self, timestamp):
         ret_idx = -1
-        for i, curr_time in enumerate(self.rs_times):
+        for i, curr_time in enumerate(self.times):
             if curr_time > timestamp:
                 ret_idx = i - 1
                 break
-            if i == len(self.rs_times) - 1:
+            if i == len(self.times) - 1:
                 ret_idx = i
                 break
         
         if ret_idx < 0:
             return None  # Before the first picture
         else:
-            return self.rs_paths[ret_idx]
+            return self.names[ret_idx]
 
     def _get_new_val(self, old_val, nc):
         """
@@ -91,16 +99,18 @@ class RSImageRepo:
         carr = np.array(arr/np.max(arr, axis=(0,1)) * 255, dtype=np.uint8)
         return Image.fromarray(carr)
 
-    def get_dithered_img(self, file_path, width, height):
+    def get_dithered_img(self, img_name, width, height):
         # Implement caching so we don't do costly re-dithering
-        if file_path == self.last_img_path and width == self.last_width and height == self.last_height:
+        if img_name == self.last_img_name and width == self.last_width and height == self.last_height:
             return self.last_img
         
-        img = mpimg.imread(file_path)
+        idx = self.names.index(img_name)
+        img = self.imgs[idx]
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(img).resize((width, height))
         img = self._fs_dither(img, 3)
         
-        self.last_img_path = file_path
+        self.last_img_name = img_name
         self.last_img = img
         self.last_width = width
         self.last_height = height
@@ -276,7 +286,7 @@ class GameRenderer:
             ax.yaxis.label.set_color((1 - self.battery / 100, self.battery / 100, 0))
         
         img_ax.set_title('RealSense View')
-        img_path = img_repo.get_img_path(line_time)
+        img_path = img_repo.get_img_name(line_time)
         if img_path is not None:
             img = img_repo.get_dithered_img(img_path, img_width, img_height)
             img_ax.imshow(img)
@@ -301,7 +311,7 @@ def main(in_folder):
         os.makedirs(frame_folder)
 
     render = GameRenderer()
-    imgs = RSImageRepo(in_folder)
+    imgs = ImageRepo(in_folder, 'realsense')
     
     line_times = []
     for i, line in enumerate(lines):

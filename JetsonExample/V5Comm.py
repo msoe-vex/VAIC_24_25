@@ -199,6 +199,8 @@ class V5SerialComms:  # TODO This is unfinished
         self.__save_n_auton_logs = 100
         self.__detection_log_interval = 0.5
         self.__last_detection_log = 0
+        self.__rs_video_writer = None
+        self.__rs_image_dims = (320, 120)
 
     def set_rl(self, rl):
         self.__rl = rl
@@ -280,10 +282,16 @@ class V5SerialComms:  # TODO This is unfinished
 
                         battery_log_line = f'[{self.__last_battery_time:.3f}] Packet received, header: "battery", data: "{self.__battery}"'
                         conn_devs_log_line = f'[{self.__last_conn_devs_time:.3f}] Packet received, header: "connectedDevices", data: "{self.__connected_devices}"'
-                        self.addLogLine(battery_log_line)
-                        self.saveCameraImage(self.__last_battery_img, self.__last_battery_img_time)
-                        self.addLogLine(conn_devs_log_line)
-                        self.saveCameraImage(self.__last_conn_devs_img, self.__last_conn_devs_img_time)
+                        if self.__last_battery_time < self.__last_conn_devs_time:
+                            self.addLogLine(battery_log_line)
+                            self.saveCameraImage(self.__last_battery_img, self.__last_battery_img_time)
+                            self.addLogLine(conn_devs_log_line)
+                            self.saveCameraImage(self.__last_conn_devs_img, self.__last_conn_devs_img_time)
+                        else:
+                            self.addLogLine(conn_devs_log_line)
+                            self.saveCameraImage(self.__last_conn_devs_img, self.__last_conn_devs_img_time)
+                            self.addLogLine(battery_log_line)
+                            self.saveCameraImage(self.__last_battery_img, self.__last_battery_img_time)
 
                         self.addLogLine(log_line)
                         self.saveCameraImage(self.__last_camera_img, self.__last_camera_time)
@@ -351,6 +359,11 @@ class V5SerialComms:  # TODO This is unfinished
         matching_autons = sorted(glob.glob(os.path.join(self.__log_folder, 'auton_*')))
         for to_delete in matching_autons[:-self.__save_n_auton_logs]:
             shutil.rmtree(to_delete)
+        
+        # Reset video writer
+        if self.__rs_video_writer is not None:
+            self.__rs_video_writer.release()
+            self.__rs_video_writer = None
 
     def getLogFolder(self):
         # We assume self.__lock is held by the caller
@@ -378,12 +391,31 @@ class V5SerialComms:  # TODO This is unfinished
         # We assume self.__lock is held by the caller
 
         if taken_time != 0 and image is not None:
-            file_name = f'realsense_{taken_time:.3f}.jpg'
-            folder_name = self.getLogFolder()
-            file_path = os.path.join(folder_name, file_name)
+            found = False
 
-            if not os.path.exists(file_path):
-                cv2.imwrite(file_path, image, [int(cv2.IMWRITE_JPEG_QUALITY), 30])
+            frame_name = f'{taken_time:.3f}'
+            log_file_name = f'realsense.log'
+            video_file_name = f'realsense.mp4'
+            folder_name = self.getLogFolder()
+            log_file_path = os.path.join(folder_name, log_file_name)
+            video_file_path = os.path.join(folder_name, video_file_name)
+
+            if os.path.exists(log_file_path):
+                with open(log_file_path, 'r') as f:
+                    file_lines = f.readlines()
+                file_lines = [l.strip() for l in file_lines]
+                file_lines = [l for l in file_lines if l != '']
+
+                found = frame_name in file_lines
+            
+            if not found:
+                if self.__rs_video_writer is None:
+                    fourcc = cv2.VideoWriter_fourcc(*'vp09')
+                    self.__rs_video_writer = cv2.VideoWriter(video_file_path, fourcc, 1 / self.__camera_update_interval, self.__rs_image_dims)
+                
+                self.__rs_video_writer.write(image)
+                with open(log_file_path, 'a') as f:
+                    f.write(f'{frame_name}\n')
     
     def updateCameraImage(self, image):
         # We assume self.__lock is held by the caller
@@ -391,7 +423,7 @@ class V5SerialComms:  # TODO This is unfinished
         this_camera_time = time.time()
 
         if image is not None and this_camera_time - self.__last_camera_time > self.__camera_update_interval:
-            resized_img = cv2.resize(image, (320, 240), interpolation=cv2.INTER_AREA)
+            resized_img = cv2.resize(image, self.__rs_image_dims, interpolation=cv2.INTER_AREA)
             resized_rgb = cv2.cvtColor(resized_img, cv2.COLOR_BGR2RGB)
             self.__last_camera_img = resized_rgb
             self.__last_camera_time = this_camera_time
