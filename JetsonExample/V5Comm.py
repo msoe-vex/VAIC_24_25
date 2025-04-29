@@ -283,15 +283,19 @@ class V5SerialComms:  # TODO This is unfinished
                         battery_log_line = f'[{self.__last_battery_time:.3f}] Packet received, header: "battery", data: "{self.__battery}"'
                         conn_devs_log_line = f'[{self.__last_conn_devs_time:.3f}] Packet received, header: "connectedDevices", data: "{self.__connected_devices}"'
                         if self.__last_battery_time < self.__last_conn_devs_time:
-                            self.addLogLine(battery_log_line)
-                            self.saveCameraImage(self.__last_battery_img, self.__last_battery_img_time)
-                            self.addLogLine(conn_devs_log_line)
-                            self.saveCameraImage(self.__last_conn_devs_img, self.__last_conn_devs_img_time)
+                            if self.__last_battery_time != 0:
+                                self.addLogLine(battery_log_line)
+                                self.saveCameraImage(self.__last_battery_img, self.__last_battery_img_time)
+                            if self.__last_conn_devs_time != 0:
+                                self.addLogLine(conn_devs_log_line)
+                                self.saveCameraImage(self.__last_conn_devs_img, self.__last_conn_devs_img_time)
                         else:
-                            self.addLogLine(conn_devs_log_line)
-                            self.saveCameraImage(self.__last_conn_devs_img, self.__last_conn_devs_img_time)
-                            self.addLogLine(battery_log_line)
-                            self.saveCameraImage(self.__last_battery_img, self.__last_battery_img_time)
+                            if self.__last_conn_devs_time != 0:
+                                self.addLogLine(conn_devs_log_line)
+                                self.saveCameraImage(self.__last_conn_devs_img, self.__last_conn_devs_img_time)
+                            if self.__last_battery_time != 0:
+                                self.addLogLine(battery_log_line)
+                                self.saveCameraImage(self.__last_battery_img, self.__last_battery_img_time)
 
                         self.addLogLine(log_line)
                         self.saveCameraImage(self.__last_camera_img, self.__last_camera_time)
