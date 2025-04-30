@@ -22,31 +22,37 @@ class ImageRepo:
         log_path = os.path.join(folder, img_src + '.log')
         vid_path = os.path.join(folder, img_src + '.mp4')
 
-        with open(log_path, 'r') as f:
-            file_lines = f.readlines()
-        file_lines = [l.strip() for l in file_lines]
-        file_lines = [l for l in file_lines if l != '']
-        self.times = [float(l) for l in file_lines]
-        self.names = file_lines
-        
-        vid_reader = cv2.VideoCapture(vid_path)
-        finished = False
-        self.imgs = []
-        while not finished:
-            ret, img = vid_reader.read()
-            if ret:
-                self.imgs.append(img)
-            else:
-                finished = True
-        vid_reader.release()
+        self.empty = not os.path.exists(log_path) or not os.path.exists(vid_path)
 
-        self.last_img_name = -1
-        self.last_img = -1
-        self.last_width = -1
-        self.last_height = -1
-        self.last_ranking = None
+        if not self.empty:
+            with open(log_path, 'r') as f:
+                file_lines = f.readlines()
+            file_lines = [l.strip() for l in file_lines]
+            file_lines = [l for l in file_lines if l != '']
+            self.times = [float(l) for l in file_lines]
+            self.names = file_lines
+            
+            vid_reader = cv2.VideoCapture(vid_path)
+            finished = False
+            self.imgs = []
+            while not finished:
+                ret, img = vid_reader.read()
+                if ret:
+                    self.imgs.append(img)
+                else:
+                    finished = True
+            vid_reader.release()
+
+            self.last_img_name = -1
+            self.last_img = -1
+            self.last_width = -1
+            self.last_height = -1
+            self.last_ranking = None
         
     def get_img_name(self, timestamp):
+        if self.empty:
+            return None
+        
         ret_idx = -1
         for i, curr_time in enumerate(self.times):
             if curr_time > timestamp:
@@ -146,6 +152,9 @@ class ImageRepo:
         return img, ranking
 
     def get_dithered_img(self, img_name, width, height):
+        if self.empty:
+            return None
+        
         # Implement caching so we don't do costly re-dithering
         if img_name == self.last_img_name and width == self.last_width and height == self.last_height:
             return self.last_img
