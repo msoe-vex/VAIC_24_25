@@ -538,7 +538,7 @@ class V5SerialComms:  # TODO This is unfinished
             inches_per_meter = 39.3701
             scaled_x = pos.x * inches_per_meter
             scaled_y = pos.y * inches_per_meter
-            gps_pos = (scaled_x, scaled_y, (90 - np.degrees(pos.rotation)) % 360)
+            gps_pos = (scaled_x, scaled_y, pos.rotation)
 
             self.updateGPSPosition(gps_pos)
             self.updateCameraImage(color_image)
