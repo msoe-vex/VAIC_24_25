@@ -11,6 +11,7 @@ import V5Comm
 from V5Comm import V5SerialComms
 from V5Position import Position
 from V5Position import V5GPS
+from V5Position import RobotLocation
 from V5Web import V5WebData
 from V5Web import Statistics
 
@@ -214,11 +215,12 @@ class MainApp:
         self.camera.start()
         self.processing = Processing(self.camera.depth_scale)
 
+        self.loc = RobotLocation(RobotLocation.POS_MODE_GPS_BEGIN)
         self.rl = RLModel('model.pt')
-        self.v5 = V5SerialComms(debug=True)
+        self.v5 = V5SerialComms(self.loc, debug=True)
         self.v5.set_rl(self.rl)
         self.v5Map = MapPosition()
-        self.v5Pos = V5GPS()
+        self.v5Pos = V5GPS(self.loc)
         self.v5Web = V5WebData(self.v5Map, self.v5Pos, self.processing)
         self.stats = Statistics(0, 0, 0, 640, 480, 0, False)
         self.rendering = Rendering(self.v5Web)
@@ -227,10 +229,8 @@ class MainApp:
         print("Initialized")
 
     def get_v5Pos(self):
-        # Return V5Position object if GPS is connected but default values if not connected
-        if self.v5Pos is None:
-            return Position(0, 0, 0, 0, 0, 0, 0, 0)
-        return self.v5Pos.getPosition()
+        # Return V5Position object from either the GPS or the robot encoders
+        return self.loc.get_pos_for_objects(RobotLocation.FIELD_GPS)
 
     def set_v5(self, aiRecord, color_image=None):
         # Set detection data to the Brain if it is connected but does not set any data if None

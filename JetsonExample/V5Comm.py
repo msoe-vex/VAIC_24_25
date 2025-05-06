@@ -7,6 +7,7 @@ from json import JSONEncoder
 import serial
 import time
 from V5Position import Position
+from V5Position import RobotLocation
 from typing import Callable
 import numpy as np
 import os
@@ -168,8 +169,9 @@ class V5SerialComms:  # TODO This is unfinished
 
     __MAP_PACKET_TYPE = 0x0001
 
-    def __init__(self, port = None, debug = False, log_folder='auton_logs'):
+    def __init__(self, robot_loc: RobotLocation, port = None, debug = False, log_folder='auton_logs'):
         # Initialize properties of V5SerialComms class, including port, started status, and lock
+        self.__loc = robot_loc
         self.__dev = port
         self.__started = False
         self.__ser = None
@@ -177,7 +179,6 @@ class V5SerialComms:  # TODO This is unfinished
         self.__debug = debug
         self.__rl = None
         self.__pending_actions = []
-        self.__gps_position = (0, 0, 0)
         self.__gps_log_interval = 1
         self.__last_gps_log = 0
         self.__auton_running = False
@@ -301,7 +302,12 @@ class V5SerialComms:  # TODO This is unfinished
                         self.saveCameraImage(self.__last_camera_img, self.__last_camera_time)
                         
                         # Set brain's initial position
-                        self.sendPacket('setPosition', ' '.join([f'{n:.2f}' for n in self.__gps_position]))
+                        pos_to_set = self.__loc.get_pos_to_set_brain(True, RobotLocation.FIELD_BRAIN)
+                        if pos_to_set is not None:
+                            initial_pos = (pos_to_set.x, pos_to_set.y, pos_to_set.azimuth)
+                        else:
+                            initial_pos = (-60.0, 12.0, 180.0)
+                        self.sendPacket('setPosition', ' '.join([f'{n:.2f}' for n in initial_pos]))
 
                         self.__lock.release()
 
@@ -333,17 +339,43 @@ class V5SerialComms:  # TODO This is unfinished
                         if self.__rl is not None:
                             self.__lock.acquire()
 
-                            self.__rl.get_observation().update_from_brain(packet.get_content())
+                            fields = packet.get_content().split()
+                            try:
+                                new_pos = Position(0, 1, float(fields[0]), float(fields[1]), 0, float(fields[2]), 0, 0)
+                                self.__loc.set_encoder_pos(new_pos, RobotLocation.FIELD_BRAIN)
+                                self.__rl.get_observation().update_robot_pos()
+                            except (ValueError, IndexError):
+                                print('WARNING: Invalid position packet from brain')
                             self.__rl.get_observation().update_time_remaining()
 
-                            while len(self.__pending_actions) == 0:
-                                _, action_list = self.__rl.predict()
-                                self.__pending_actions += action_list
+                            pos_to_set = self.__loc.get_pos_to_set_brain(False, RobotLocation.FIELD_BRAIN)
 
-                            to_execute = self.__pending_actions.pop(0)
-                            to_execute_str = self.serializeAction(to_execute)
-                            self.sendPacket('runAction', to_execute_str)
+                            if pos_to_set is not None:
+                                # Update brain position instead of sending an action
+                                gps_pos = (pos_to_set.x, pos_to_set.y, pos_to_set.azimuth)
+                                self.sendPacket('setPosition', ' '.join([f'{n:.2f}' for n in gps_pos]))
+                            
+                            else:
+                                # Send an action
+                                while len(self.__pending_actions) == 0:
+                                    _, action_list = self.__rl.predict()
+                                    self.__pending_actions += action_list
 
+                                to_execute = self.__pending_actions.pop(0)
+                                to_execute_str = self.serializeAction(to_execute)
+                                self.sendPacket('runAction', to_execute_str)
+
+                            self.__lock.release()
+
+                    elif packet.get_header() == "pos":
+                        if self.__rl is not None:
+                            self.__lock.acquire()
+                            fields = packet.get_content().split(',')
+                            try:
+                                new_pos = Position(0, 1, float(fields[0]), float(fields[1]), 0, float(fields[2]), 0, 0)
+                                self.__loc.set_encoder_pos(new_pos, RobotLocation.FIELD_BRAIN)
+                            except (ValueError, IndexError):
+                                print('WARNING: Invalid position packet from brain')
                             self.__lock.release()
 
             # To close the serial port gracefully, use Ctrl+C to break the loop
@@ -432,13 +464,15 @@ class V5SerialComms:  # TODO This is unfinished
             self.__last_camera_img = resized_rgb
             self.__last_camera_time = this_camera_time
     
-    def updateGPSPosition(self, gps_pos):
+    def updateGPSPosition(self):
         # We assume self.__lock is held by the caller
         
         this_gps_time = time.time()
 
-        self.__gps_position = gps_pos
         if this_gps_time - self.__last_gps_log > self.__gps_log_interval:
+            gps_pos_obj = self.__loc.get_gps_pos(RobotLocation.FIELD_BRAIN)
+            gps_pos = (gps_pos_obj.x, gps_pos_obj.y, gps_pos_obj.azimuth)
+
             log_line = f'[{this_gps_time:.3f}] GPS Coordinates: "{",".join([f"{n:.2f}" for n in gps_pos])}"'
             if self.__debug:
                 print(log_line)
@@ -450,44 +484,43 @@ class V5SerialComms:  # TODO This is unfinished
     def serializeAction(self, action_tuple):
         # We assume self.__lock is held by the caller
 
-        out = action_tuple[0]
+        action = action_tuple[0]
+        out = action
         if action_tuple[1] is not None:
             params = action_tuple[1]
-            param_num = 0
-            for param in params:
-                if action_tuple[0] == 'FORWARD' or action_tuple[0] == 'BACKWARD':
 
-                    # Initial angle (so the robot doesn't turn while following and crash)
-                    if param_num == 0:
-                        if len(params) >= 4:
-                            x_old, y_old, x_new, y_new = params[0:4]
-                            initial_theta = np.arctan2(y_new - y_old, x_new - x_old)
-                            # Transform angle to the system the brain uses
-                            initial_theta = ((np.pi / 2 - initial_theta) * (180 / np.pi)) % 360
-                        else:
-                            initial_theta = 0.0
-                        if action_tuple[0] == 'BACKWARD':
-                            initial_theta = (initial_theta + 180) % 360
-                        
-                        out += f' {initial_theta:.2f}'
-                        
-                    # Transform coordinate to the system the brain uses
-                    param = param * 144 / 12 - 72
-
-                elif action_tuple[0] == 'TURN_TO':
+            if action == 'FORWARD' or action == 'BACKWARD':
+                if len(params) >= 4:
+                    x_old, y_old, x_new, y_new = params[0:4]
+                    initial_theta = np.arctan2(y_new - y_old, x_new - x_old)
                     # Transform angle to the system the brain uses
-                    param = ((np.pi / 2 - param) * (180 / np.pi)) % 360
-                
-                out += ' '
-                if isinstance(param, (float, np.floating)):
-                    out += f'{param:.2f}'
+                    theta_obj = Position(0, 1, 0, 0, 0, initial_theta, 0, 0)
+                    theta_obj = RobotLocation.convert_to(RobotLocation.FIELD_BRAIN, 
+                            RobotLocation.convert_from(RobotLocation.FIELD_RL, theta_obj))
+                    initial_theta = theta_obj.azimuth
                 else:
-                    out += str(param)
-                
-                param_num += 1
+                    initial_theta = 0.0
+                if action_tuple[0] == 'BACKWARD':
+                    initial_theta = (initial_theta + 180) % 360
+                out += f' {initial_theta:.2f}'
+
+                for x, y in zip(params[0::2], params[1::2]):
+                    # Transform X & Y to the system the brain uses
+                    xy_obj = Position(0, 1, x, y, 0, 0, 0, 0)
+                    xy_obj = RobotLocation.convert_to(RobotLocation.FIELD_BRAIN, 
+                            RobotLocation.convert_from(RobotLocation.FIELD_RL, xy_obj))
+                    out += f' {xy_obj.x:.2f} {xy_obj.y:.2f}'
+
+            elif action == 'TURN_TO':
+                # Transform angle to the system the brain uses
+                theta_obj = Position(0, 1, 0, 0, 0, params[0], 0, 0)
+                theta_obj = RobotLocation.convert_to(RobotLocation.FIELD_BRAIN, 
+                        RobotLocation.convert_from(RobotLocation.FIELD_RL, theta_obj))
+                initial_theta = theta_obj.azimuth
+                out += f' {initial_theta:.2f}'
             
         if self.__rl is not None:
-            self.__rl.get_observation().update_from_action(action_tuple[0])
+            self.__rl.get_observation().update_from_action(action)
         
         return out
 
@@ -534,13 +567,7 @@ class V5SerialComms:  # TODO This is unfinished
 
             self.__lock.acquire()
 
-            pos = aiRecord.position
-            inches_per_meter = 39.3701
-            scaled_x = pos.x * inches_per_meter
-            scaled_y = pos.y * inches_per_meter
-            gps_pos = (scaled_x, scaled_y, pos.azimuth)
-
-            self.updateGPSPosition(gps_pos)
+            self.updateGPSPosition()
             self.updateCameraImage(color_image)
 
             this_detection = time.time()
@@ -551,9 +578,15 @@ class V5SerialComms:  # TODO This is unfinished
                 for obj in objects:
                     if np.isnan(obj['x']) or np.isnan(obj['y']):
                         continue
+
+                    # Transform X & Y to the system the brain uses
+                    xy_obj = Position(0, 1, obj['x'], obj['y'], 0, 0, 0, 0)
+                    xy_obj = RobotLocation.convert_to(RobotLocation.FIELD_BRAIN, 
+                            RobotLocation.convert_from(RobotLocation.FIELD_GPS, xy_obj))
+
                     if log_line[-1] != '"':
                         log_line += ';'
-                    log_line += f"{obj['type']},{obj['x'] * inches_per_meter:.2f},{obj['y'] * inches_per_meter:.2f}"
+                    log_line += f"{obj['type']},{xy_obj.x:.2f},{xy_obj.y:.2f}"
                 log_line += '"'
 
                 if self.__debug:

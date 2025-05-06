@@ -2,6 +2,8 @@ import numpy as np
 import copy
 from threading import Lock
 import torch, os, sys, time, math
+from V5Position import RobotLocation
+from V5Position import Position
 
 # Import scripts from submodule
 # sys.path.append(os.path.abspath("VEXAI"))
@@ -10,13 +12,14 @@ from VEXAI.pettingZooEnv import NUM_WALL_STAKES, NUM_GOALS, NUM_RINGS
 
 
 class Observation:
-    def __init__(self):
+    def __init__(self, robot_loc: RobotLocation):
         self.__state = np.zeros(
             2 + 1 + 1 + 1 + (NUM_RINGS * 2) + (NUM_GOALS * 2) + NUM_WALL_STAKES + 1 + 1 + 1 + 1,
             dtype=np.float32
         )
         self.__last_reset = time.time()
         self.__begin_time = 60
+        self.__loc = robot_loc
         self.__lock = Lock()
 
     def begin_auton(self, begin_time=60):
@@ -26,24 +29,16 @@ class Observation:
         self.__state[3] = 0  # Holding Goal
         self.__lock.release()
 
-    def update_from_brain(self, new_data: str):
-        # Define the format for observation packets from the brain here
-        fields = new_data.split()
-        try:
-            # Parse everything before writing state to avoid partial writes
-            robot_x = (float(fields[0]) + 72) * 12 / 144
-            robot_y = (float(fields[1]) + 72) * 12 / 144
-            robot_orientation = (((90 - float(fields[2])) * (np.pi / 180) + np.pi) % (2 * np.pi)) - np.pi
+    def update_robot_pos(self):
+        new_pos = self.__loc.get_pos_for_rl(RobotLocation.FIELD_RL)
 
-            self.__lock.acquire()
+        self.__lock.acquire()
 
-            self.__state[0] = robot_x
-            self.__state[1] = robot_y
-            self.__state[2] = robot_orientation
+        self.__state[0] = new_pos.x
+        self.__state[1] = new_pos.y
+        self.__state[2] = new_pos.azimuth
 
-            self.__lock.release()
-        except ValueError:
-            print('WARNING: Invalid observation packet from brain')
+        self.__lock.release()
 
     def update_from_camera(self, obj_list: list):
         # This gets called when the camera updates its detections
@@ -53,11 +48,12 @@ class Observation:
         goal_idx = 0
 
         for obj in obj_list:
-            # Realsense has meters for units and middle is zero
-            # Scale to feet and shift zero to bottom left to match model
-            feet_per_meter = 3.28084
-            x = obj['x'] * feet_per_meter + 6
-            y = obj['y'] * feet_per_meter + 6
+            # Scale camera points to match what RL model expects
+            obj_pos = Position(0, 1, obj['x'], obj['y'], 0, 0, 0, 0)
+            obj_pos_scaled = RobotLocation.convert_to(RobotLocation.FIELD_RL, 
+                    RobotLocation.convert_from(RobotLocation.FIELD_GPS, obj_pos))
+            x = obj_pos_scaled.x
+            y = obj_pos_scaled.y
 
             # Place ring & goal coordinates in our observation
             if not math.isnan(x) and not math.isnan(y):
@@ -104,8 +100,8 @@ class Observation:
 
 
 class RLModel():
-    def __init__(self, model_path):
-        self.observation = Observation()
+    def __init__(self, model_path, robot_loc: RobotLocation):
+        self.observation = Observation(robot_loc)
         self.env = High_Stakes_Multi_Agent_Env()
         self.last_action = None
 

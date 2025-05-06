@@ -6,6 +6,7 @@ import time
 import math
 from filter import LiveFilter
 import numpy as np 
+import copy
 
 class Position:
     # Status flags for different conditions
@@ -50,12 +51,171 @@ class Position:
         outData['rotation'] = self.rotation
         return outData
 
+class RobotLocation:
+    # Position Modes
+    POS_MODE_GPS_BEGIN = 0
+    POS_MODE_GPS_ONLY = 1
+    POS_MODE_GPS_OBJECTS = 2
+    POS_MODE_ENCODER_ONLY = 3
+
+    # Field Types
+    FIELD_GPS = 0
+    FIELD_BRAIN = 1
+    FIELD_RL = 2
+
+    # Constants for conversions
+    INCHES_PER_METER = 39.3701
+    FEET_PER_METER = 3.28084
+    FIELD_LENGTH_FEET = 12
+    
+    def __init__(self, robot_pos_mode):
+        self.__robot_pos_mode = robot_pos_mode
+        self.__gpsPosition = Position(0, 0, 0, 0, 0, 0, 0, 0)
+        self.__encoderPosition = Position(0, 0, 0, 0, 0, 0, 0, 0)
+        self.__last_was_pos = True
+        self.__gpsLock = Lock()
+        self.__encoderLock = Lock()
+    
+    def get_pos_mode(self):
+        return self.__robot_pos_mode
+    
+    def set_gps_pos(self, pos_obj, field):
+        converted_pos = self.convert_from(field, pos_obj)
+        self.__gpsLock.acquire()
+        self.__gpsPosition = converted_pos
+        self.__gpsLock.release()
+    
+    def get_gps_pos(self, field):
+        self.__gpsLock.acquire()
+        ret = self.__gpsPosition
+        self.__gpsLock.release()
+        return self.convert_to(field, ret)
+    
+    def set_encoder_pos(self, pos_obj, field):
+        converted_pos = self.convert_from(field, pos_obj)
+        self.__encoderLock.acquire()
+        self.__encoderPosition = converted_pos
+        self.__encoderLock.release()
+    
+    def get_encoder_pos(self, field):
+        self.__encoderLock.acquire()
+        ret = self.__encoderPosition
+        self.__encoderLock.release()
+        return self.convert_to(field, ret)
+    
+    def get_pos_for_objects(self, field):
+        gps_modes = [
+            RobotLocation.POS_MODE_GPS_BEGIN,
+            RobotLocation.POS_MODE_GPS_ONLY,
+            RobotLocation.POS_MODE_GPS_OBJECTS,
+        ]
+        if self.__robot_pos_mode in gps_modes:
+            ret = self.get_gps_pos(field)
+        else:
+            ret = self.get_encoder_pos(field)
+        return ret
+    
+    def get_pos_for_rl(self, field):
+        gps_modes = [
+            RobotLocation.POS_MODE_GPS_ONLY,
+        ]
+        if self.__robot_pos_mode in gps_modes:
+            ret = self.get_gps_pos(field)
+        else:
+            ret = self.get_encoder_pos(field)
+        return ret
+    
+    def get_pos_to_set_brain(self, begin_auton, field):
+        gps_begin_modes = [
+            RobotLocation.POS_MODE_GPS_BEGIN,
+            RobotLocation.POS_MODE_GPS_ONLY,
+        ]
+        gps_always_modes = [
+            RobotLocation.POS_MODE_GPS_ONLY,
+        ]
+        if (begin_auton and self.__robot_pos_mode in gps_begin_modes) \
+                or (not self.__last_was_pos and self.__robot_pos_mode in gps_always_modes):
+            ret = self.get_gps_pos(field)
+            self.__last_was_pos = True
+        else:
+            ret = None
+            self.__last_was_pos = False
+        return ret
+
+    # Position conversion methods
+    # This class uses GPS-type coordinates internally
+    
+    @staticmethod
+    def convert_from(field, pos_obj):
+        if field == RobotLocation.FIELD_BRAIN:
+            ret = RobotLocation.pos_from_brain(pos_obj)
+        elif field == RobotLocation.FIELD_RL:
+            ret = RobotLocation.pos_from_rl(pos_obj)
+        else:
+            # FIELD_GPS defaults here, no conversion needed
+            ret = copy.deepcopy(pos_obj)
+        return ret
+    
+    @staticmethod
+    def convert_to(field, pos_obj):
+        if field == RobotLocation.FIELD_BRAIN:
+            ret = RobotLocation.pos_to_brain(pos_obj)
+        elif field == RobotLocation.FIELD_RL:
+            ret = RobotLocation.pos_to_rl(pos_obj)
+        else:
+            # FIELD_GPS defaults here, no conversion needed
+            ret = copy.deepcopy(pos_obj)
+        return ret
+    
+    @staticmethod
+    def pos_to_brain(pos_obj):
+        ret = copy.deepcopy(pos_obj)
+        ret.x *= RobotLocation.INCHES_PER_METER
+        ret.y *= RobotLocation.INCHES_PER_METER
+        ret.z *= RobotLocation.INCHES_PER_METER
+        return ret
+    
+    @staticmethod
+    def pos_from_brain(pos_obj):
+        ret = copy.deepcopy(pos_obj)
+        ret.x /= RobotLocation.INCHES_PER_METER
+        ret.y /= RobotLocation.INCHES_PER_METER
+        ret.z /= RobotLocation.INCHES_PER_METER
+        return ret
+    
+    @staticmethod
+    def pos_to_rl(pos_obj):
+        ret = copy.deepcopy(pos_obj)
+        ret.x *= RobotLocation.FEET_PER_METER
+        ret.x += RobotLocation.FIELD_LENGTH_FEET / 2
+        ret.y *= RobotLocation.FEET_PER_METER
+        ret.y += RobotLocation.FIELD_LENGTH_FEET / 2
+        ret.z *= RobotLocation.FEET_PER_METER
+        new_azimuth = 90 - ret.azimuth
+        ret.azimuth = np.radians(((new_azimuth + 180) % 360) - 180)
+        ret.elevation = np.radians(ret.elevation)
+        ret.rotation = np.radians(ret.rotation)
+        return ret
+    
+    @staticmethod
+    def pos_from_rl(pos_obj):
+        ret = copy.deepcopy(pos_obj)
+        ret.x -= RobotLocation.FIELD_LENGTH_FEET / 2
+        ret.x /= RobotLocation.FEET_PER_METER
+        ret.y -= RobotLocation.FIELD_LENGTH_FEET / 2
+        ret.y /= RobotLocation.FEET_PER_METER
+        ret.z /= RobotLocation.FEET_PER_METER
+        ret.azimuth = (90 - np.degrees(ret.azimuth)) % 360
+        ret.elevation = np.degrees(ret.elevation)
+        ret.rotation = np.degrees(ret.rotation)
+        return ret
+
 class V5GPS:
     # Packet type identifier
     __MAP_PACKET_TYPE = 0x0001
 
 
-    def __init__(self, port = None):
+    def __init__(self, robot_loc: RobotLocation, port = None):
         # Initialization of GPS attributes including port, position, and offsets
         self.__dev = port
         self.__started = False
@@ -63,6 +223,7 @@ class V5GPS:
         self.__isConnected = False
         self.__position = Position(0, 0, 0, 0, 0, 0, 0, 0)
         self.__positionLock = Lock()
+        self.__robot_loc = robot_loc
         self.__HEADINGOFFSET =  0 # Degree offset of gps
         # When x and y offsets are updated, offsets are automatically converted to meters
         self.__GPSXOFFSET = 0  # GPS offset in default units (meters) (X-axis)
@@ -154,6 +315,9 @@ class V5GPS:
                             self.__position.rotation = rot
                             self.__position.status = localStatus
                             self.__position.frameCount = self.__frameCount
+
+                            self.__robot_loc.set_gps_pos(self.__position, RobotLocation.FIELD_GPS)
+                            
                             self.__positionLock.release()
 
             # To close the serial port gracefully, use Ctrl+C to break the loop
@@ -168,6 +332,7 @@ class V5GPS:
             self.__frameCount = 0
             self.__positionLock.acquire()
             self.__position.status = 0
+            self.__robot_loc.set_gps_pos(self.__position, RobotLocation.FIELD_GPS)
             self.__positionLock.release()
 
         print("V5SerialComms thread stopped.")
