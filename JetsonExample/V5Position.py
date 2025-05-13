@@ -243,7 +243,6 @@ class V5GPS:
         # Main method to run the GPS data reading and processing
         # Includes connection establishment, data reading, coordinate transformation, and status handling
         # Setting local variables for GPS Offset from global
-        count = 1
 
         while self.__started:
             port = self.__dev
@@ -252,14 +251,10 @@ class V5GPS:
                 if(port == None):
                     from serial.tools.list_ports import comports
                     devices = [dev for dev in comports() if "GPS" in dev.description and "User" in dev.description]
-                    if(len(devices) == 0 and count <= 5):
+                    if len(devices) == 0:
                         print("No GPS detected.")
                         time.sleep(1)  # Wait for 1 second before retrying
-                        count += 1
                         continue
-                    elif(count > 5):
-                        self.__isConnected = False
-                        return None  # Return None if no devices found after 5 tries
                     else:
                         self.__isConnected = True
                         port = devices[0].device
