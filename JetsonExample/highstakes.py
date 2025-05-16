@@ -214,7 +214,7 @@ class MainApp:
         self.camera.start()
         self.processing = Processing(self.camera.depth_scale)
 
-        self.rl = RLModel('strategy.zip')
+        self.rl = RLModel('model.pt')
         self.v5 = V5SerialComms(debug=True)
         self.v5.set_rl(self.rl)
         self.v5Map = MapPosition()
