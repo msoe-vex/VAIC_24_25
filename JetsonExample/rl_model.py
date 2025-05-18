@@ -142,10 +142,12 @@ class RLModel():
 if __name__ == "__main__":
     # Example usage
     model_path = os.path.join(os.path.dirname(__file__), "model.pt")
-    rl_model = RLModel(model_path)
+    loc = RobotLocation(RobotLocation.POS_MODE_GPS_ONLY)
+    rl_model = RLModel(model_path, loc)
 
     # Simulate getting observations and making predictions
-    rl_model.observation.update_from_brain("0.5 0.5 45")
+    loc.set_gps_pos(Position(0, 1, 0.5, 0.5, 0, np.pi / 4, 0, 0), RobotLocation.FIELD_RL)
+    rl_model.observation.update_robot_pos()
     rl_model.observation.update_from_camera([{"x": 1, "y": 2, "type": "goal"}])
     rl_model.observation.update_from_action("PICKUP_GOAL")
     action, action_list = rl_model.predict()

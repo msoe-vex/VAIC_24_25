@@ -216,7 +216,7 @@ class MainApp:
         self.processing = Processing(self.camera.depth_scale)
 
         self.loc = RobotLocation(RobotLocation.POS_MODE_GPS_BEGIN)
-        self.rl = RLModel('model.pt')
+        self.rl = RLModel('model.pt', self.loc)
         self.v5 = V5SerialComms(self.loc, debug=True)
         self.v5.set_rl(self.rl)
         self.v5Map = MapPosition()
