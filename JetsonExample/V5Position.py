@@ -7,6 +7,7 @@ import math
 from filter import LiveFilter
 import numpy as np 
 import copy
+from objdiff import ObjectDifferentialPositioner
 
 class Position:
     # Status flags for different conditions
@@ -50,6 +51,11 @@ class Position:
         outData['elevation'] = self.elevation
         outData['rotation'] = self.rotation
         return outData
+    
+    @staticmethod
+    def from_xy(x, y):
+        # Creates a Position object from x and y coordinates
+        return Position(0, 1, x, y, 0, 0, 0, 0)
 
 class RobotLocation:
     # Position Modes
@@ -68,40 +74,58 @@ class RobotLocation:
     FEET_PER_METER = 3.28084
     FIELD_LENGTH_FEET = 12
     
-    def __init__(self, robot_pos_mode):
+    def __init__(self, robot_pos_mode, differential_pos: ObjectDifferentialPositioner = None):
         self.__robot_pos_mode = robot_pos_mode
         self.__gpsPosition = Position(0, 0, 0, 0, 0, 0, 0, 0)
         self.__encoderPosition = Position(0, 0, 0, 0, 0, 0, 0, 0)
         self.__last_was_pos = True
-        self.__gpsLock = Lock()
-        self.__encoderLock = Lock()
+        self.__lock = Lock()
+        self.__offset_x = 0
+        self.__offset_y = 0
+        self.__differential_pos = differential_pos
     
     def get_pos_mode(self):
         return self.__robot_pos_mode
     
     def set_gps_pos(self, pos_obj, field):
         converted_pos = self.convert_from(field, pos_obj)
-        self.__gpsLock.acquire()
+        self.__lock.acquire()
         self.__gpsPosition = converted_pos
-        self.__gpsLock.release()
+        self.__lock.release()
     
     def get_gps_pos(self, field):
-        self.__gpsLock.acquire()
+        self.__lock.acquire()
         ret = self.__gpsPosition
-        self.__gpsLock.release()
+        if self.__differential_pos is not None:
+            ret.x += self.__offset_x
+            ret.y += self.__offset_y
+        self.__lock.release()
         return self.convert_to(field, ret)
     
     def set_encoder_pos(self, pos_obj, field):
         converted_pos = self.convert_from(field, pos_obj)
-        self.__encoderLock.acquire()
+        self.__lock.acquire()
         self.__encoderPosition = converted_pos
-        self.__encoderLock.release()
+        self.__lock.release()
     
     def get_encoder_pos(self, field):
-        self.__encoderLock.acquire()
+        self.__lock.acquire()
         ret = self.__encoderPosition
-        self.__encoderLock.release()
+        if self.__differential_pos is not None:
+            ret.x += self.__offset_x
+            ret.y += self.__offset_y
+        self.__lock.release()
         return self.convert_to(field, ret)
+    
+    def differential_camera_objects(self, aiRecord):
+        # This function is called when the camera detects objects
+        # It updates the offsets based on the detected objects
+        if self.__differential_pos is not None:
+            self.__offset_x, self.__offset_y = self.__differential_pos.get_offset(aiRecord)
+            self.__gpsPosition.x += self.__offset_x
+            self.__gpsPosition.y += self.__offset_y
+            self.__encoderPosition.x += self.__offset_x
+            self.__encoderPosition.y += self.__offset_y
     
     def get_pos_for_objects(self, field):
         gps_modes = [

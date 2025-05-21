@@ -541,6 +541,8 @@ class V5SerialComms:  # TODO This is unfinished
             print("Serial connection is not open. Cannot send packet.")
 
     def setDetectionData(self, aiRecord, color_image=None):
+        self.__loc.differential_camera_objects(aiRecord)
+        
         if self.__rl is not None:
             object_types = ['goal', 'red_ring', 'blue_ring', 'both_rings']
 

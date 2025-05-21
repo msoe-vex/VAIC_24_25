@@ -1,4 +1,5 @@
 # Import necessary libraries
+from kmeans import AIRecordParser
 import pyrealsense2 as rs
 import numpy as np
 import cv2
@@ -208,6 +209,8 @@ class Rendering:
 
 
 class MainApp:
+    USE_KMEANS = True  # Set to True to use KMeans for object position smoothing
+
     def __init__(self):
         # Initialize various components including camera, processing, and rendering
         print("Starting Initialization...")
@@ -216,6 +219,7 @@ class MainApp:
         self.processing = Processing(self.camera.depth_scale)
 
         self.loc = RobotLocation(RobotLocation.POS_MODE_GPS_BEGIN)
+        self.object_positioner = AIRecordParser(5, self.loc)
         self.rl = RLModel('model.pt', self.loc)
         self.v5 = V5SerialComms(self.loc, debug=True)
         self.v5.set_rl(self.rl)
@@ -253,6 +257,8 @@ class MainApp:
                 output, detections = self.processing.detect_objects(color_image)
                 invoke_time = time.time() - invoke_time
                 aiRecord = self.processing.compute_detections(self, detections, depth_image)
+                if self.USE_KMEANS:
+                    aiRecord = self.object_positioner.translate_detections(aiRecord)
                 self.set_v5(aiRecord, color_image)
                 self.rendering.set_images(output, depth_map)
                 self.rendering.set_detection_data(aiRecord)
