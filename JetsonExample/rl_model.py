@@ -57,8 +57,8 @@ class Observation:
             # Place ring & goal coordinates in our observation
             if not math.isnan(x) and not math.isnan(y):
                 if obj['type'] == 'goal' and goal_idx < NUM_GOALS:
-                    self.__state[10 + NUM_RINGS * 2 + 2 * goal_idx] = x
-                    self.__state[10 + NUM_RINGS * 2 + 2 * goal_idx + 1] = y
+                    self.__state[5 + NUM_RINGS * 2 + 2 * goal_idx] = x
+                    self.__state[5 + NUM_RINGS * 2 + 2 * goal_idx + 1] = y
                     goal_idx += 1
                 elif obj['type'] == 'red_ring' and ring_idx < NUM_RINGS:
                     self.__state[4 + 2 * ring_idx] = x
@@ -67,9 +67,9 @@ class Observation:
 
         # Fill the rest of rings and goals with -1
         if goal_idx < NUM_GOALS:
-            self.__state[10 + NUM_RINGS * 2 + 2 * goal_idx:] = -1
+            self.__state[5 + NUM_RINGS * 2 + 2 * goal_idx:] = -1
         if ring_idx < NUM_RINGS:
-            self.__state[4 + 2 * ring_idx:] = -1
+            self.__state[5 + 2 * ring_idx:] = -1
 
         # Set ring and goal counts
         self.__state[-2] = ring_idx
