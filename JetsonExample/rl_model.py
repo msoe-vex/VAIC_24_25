@@ -7,8 +7,7 @@ from V5Position import Position
 
 # Import scripts from submodule
 # sys.path.append(os.path.abspath("VEXAI"))
-from VEXAI.pettingZooEnv import High_Stakes_Multi_Agent_Env
-from VEXAI.pettingZooEnv import NUM_WALL_STAKES, NUM_GOALS, NUM_RINGS
+from VEXAI.pettingZooEnv import NUM_WALL_STAKES, NUM_GOALS, NUM_RINGS, Actions, High_Stakes_Multi_Agent_Env
 
 
 class Observation:
@@ -104,6 +103,14 @@ class RLModel():
         self.observation = Observation(robot_loc)
         self.env = High_Stakes_Multi_Agent_Env()
         self.last_action = None
+        
+        self.env.invalid_actions = [
+            Actions.DRIVE_TO_WALL_STAKE_T.value,
+            Actions.DRIVE_TO_WALL_STAKE_B.value,
+            Actions.DRIVE_TO_WALL_STAKE_L.value,
+            Actions.DRIVE_TO_WALL_STAKE_R.value,
+            Actions.ADD_RING_TO_WALL_STAKE.value
+        ]
 
         # Load the TorchScript model
         try:
