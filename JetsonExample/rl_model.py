@@ -65,15 +65,17 @@ class Observation:
                     self.__state[5 + 2 * ring_idx + 1] = y
                     ring_idx += 1
 
-        # Fill the rest of rings and goals with -1
-        if goal_idx < NUM_GOALS:
-            self.__state[5 + NUM_RINGS * 2 + 2 * goal_idx:] = -1
-        if ring_idx < NUM_RINGS:
-            self.__state[5 + 2 * ring_idx:] = -1
-
         # Set ring and goal counts
         self.__state[-2] = ring_idx
         self.__state[-1] = goal_idx
+
+        # Fill the rest of rings and goals with -1
+        for i in range(goal_idx, NUM_GOALS):
+            self.__state[5 + NUM_RINGS * 2 + 2 * i] = -1
+            self.__state[5 + NUM_RINGS * 2 + 2 * i + 1] = -1
+        for i in range(ring_idx, NUM_RINGS):
+            self.__state[5 + 2 * i] = -1
+            self.__state[5 + 2 * i + 1] = -1
 
         self.__lock.release()
 
