@@ -61,8 +61,8 @@ class Observation:
                     self.__state[5 + NUM_RINGS * 2 + 2 * goal_idx + 1] = y
                     goal_idx += 1
                 elif obj['type'] == 'red_ring' and ring_idx < NUM_RINGS:
-                    self.__state[4 + 2 * ring_idx] = x
-                    self.__state[4 + 2 * ring_idx + 1] = y
+                    self.__state[5 + 2 * ring_idx] = x
+                    self.__state[5 + 2 * ring_idx + 1] = y
                     ring_idx += 1
 
         # Fill the rest of rings and goals with -1
