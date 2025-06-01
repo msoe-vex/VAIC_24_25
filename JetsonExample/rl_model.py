@@ -100,7 +100,7 @@ class Observation:
             self.__state[3] = 1
         elif action == 'DROP_GOAL':
             self.__state[3] = 0
-        elif action == 'PICK_UP_NEAREST_RING':
+        elif action == 'PICKUP_RING':
             self.__state[4] += 1
         elif action == 'ADD_RING_TO_GOAL':
             self.__state[4] -= 1
