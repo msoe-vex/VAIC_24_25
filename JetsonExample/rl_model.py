@@ -11,6 +11,20 @@ from VEXAI.pettingZooEnv import NUM_WALL_STAKES, NUM_GOALS, NUM_RINGS, Actions, 
 
 
 class Observation:
+    # Observation structure:
+    # 1. Position (x, y): 2 elements
+    # 2. Orientation: 1 element
+    # 3. Holding Goal (boolean): 1 element
+    # 4. Held Rings (count): 1 element
+    # 5. Ring positions (x, y for each): NUM_RINGS * 2 elements
+    # 6. Goal positions (x, y for each): NUM_GOALS * 2 elements
+    # 7. Rings on wall stakes (count for each): NUM_WALL_STAKES elements
+    # 8. Holding Goal Full (boolean): 1 element
+    # 9. Time Remaining: 1 element
+    # 10. Visible Rings Count: 1 element
+    # 11. Visible Goals Count: 1 element
+    # Total elements = 2+1+1+1 + (NUM_RINGS*2) + (NUM_GOALS*2) + NUM_WALL_STAKES + 1+1+1+1 = 71
+
     def __init__(self, robot_loc: RobotLocation):
         self.__state = np.zeros(
             2 + 1 + 1 + 1 + (NUM_RINGS * 2) + (NUM_GOALS * 2) + NUM_WALL_STAKES + 1 + 1 + 1 + 1,
@@ -65,10 +79,6 @@ class Observation:
                     self.__state[5 + 2 * ring_idx + 1] = y
                     ring_idx += 1
 
-        # Set ring and goal counts
-        self.__state[-2] = ring_idx
-        self.__state[-1] = goal_idx
-
         # Fill the rest of rings and goals with -1
         for i in range(goal_idx, NUM_GOALS):
             self.__state[5 + NUM_RINGS * 2 + 2 * i] = -1
@@ -76,6 +86,10 @@ class Observation:
         for i in range(ring_idx, NUM_RINGS):
             self.__state[5 + 2 * i] = -1
             self.__state[5 + 2 * i + 1] = -1
+
+        # Set ring and goal counts
+        self.__state[-2] = ring_idx
+        self.__state[-1] = goal_idx
 
         self.__lock.release()
 
@@ -86,6 +100,19 @@ class Observation:
             self.__state[3] = 1
         elif action == 'DROP_GOAL':
             self.__state[3] = 0
+        elif action == 'PICK_UP_NEAREST_RING':
+            self.__state[4] += 1
+        elif action == 'ADD_RING_TO_GOAL':
+            self.__state[4] -= 1
+        elif action == 'ADD_RING_TO_WALL_STAKE':
+            self.__state[4] -= 1
+            # Handle ADD_RING_TO_WALL_STAKE_<L|R|B|T> actions
+            if action.startswith('ADD_RING_TO_WALL_STAKE_'):
+                stake_map = {'L': 0, 'R': 1, 'B': 2, 'T': 3}
+                stake = action.split('_')[-1]
+                idx = stake_map.get(stake)
+                if idx is not None:
+                    self.__state[5 + NUM_RINGS * 2 + NUM_GOALS + idx] += 1
         self.__lock.release()
 
     def update_time_remaining(self):
