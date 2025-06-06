@@ -138,7 +138,11 @@ class RLModel():
             Actions.DRIVE_TO_WALL_STAKE_B.value,
             Actions.DRIVE_TO_WALL_STAKE_L.value,
             Actions.DRIVE_TO_WALL_STAKE_R.value,
-            Actions.ADD_RING_TO_WALL_STAKE.value
+            Actions.ADD_RING_TO_WALL_STAKE.value,
+            Actions.DRIVE_TO_CORNER_BL,
+            Actions.DRIVE_TO_CORNER_BR,
+            Actions.DRIVE_TO_CORNER_TL,
+            Actions.DRIVE_TO_CORNER_TR
         ]
 
         # Load the TorchScript model
