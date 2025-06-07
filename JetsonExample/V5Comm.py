@@ -202,6 +202,7 @@ class V5SerialComms:  # TODO This is unfinished
         self.__last_detection_log = 0
         self.__rs_video_writer = None
         self.__rs_image_dims = (320, 120)
+        self.__game_color_red = False
 
     def set_rl(self, rl):
         self.__rl = rl
@@ -272,6 +273,11 @@ class V5SerialComms:  # TODO This is unfinished
 
                     if packet.get_header() == "autoStart":
                         self.__lock.acquire()
+
+                        # Set game color
+                        self.__game_color_red = (packet.get_content() == 'Red')
+                        if self.__rl is not None:
+                            self.__rl.get_observation().set_color(self.__game_color_red)
 
                         # Reset state
                         self.__pending_actions = []

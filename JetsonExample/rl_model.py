@@ -33,6 +33,7 @@ class Observation:
         self.__last_reset = time.time()
         self.__begin_time = 60
         self.__loc = robot_loc
+        self.__game_color_red = False
         self.__lock = Lock()
 
     def begin_auton(self, begin_time=60):
@@ -69,12 +70,16 @@ class Observation:
             y = obj_pos_scaled.y
 
             # Place ring & goal coordinates in our observation
+            if self.__game_color_red:
+                ring_with_color = 'red_ring'
+            else:
+                ring_with_color = 'blue_ring'
             if not math.isnan(x) and not math.isnan(y):
                 if obj['type'] == 'goal' and goal_idx < NUM_GOALS:
                     self.__state[5 + NUM_RINGS * 2 + 2 * goal_idx] = x
                     self.__state[5 + NUM_RINGS * 2 + 2 * goal_idx + 1] = y
                     goal_idx += 1
-                elif obj['type'] == 'red_ring' and ring_idx < NUM_RINGS:
+                elif obj['type'] == ring_with_color and ring_idx < NUM_RINGS:
                     self.__state[5 + 2 * ring_idx] = x
                     self.__state[5 + 2 * ring_idx + 1] = y
                     ring_idx += 1
@@ -125,6 +130,11 @@ class Observation:
         ret = self.__state.copy()
         self.__lock.release()
         return ret
+    
+    def set_color(self, red: bool):
+        self.__lock.acquire()
+        self.__game_color_red = red
+        self.__lock.release()
 
 
 class RLModel():
